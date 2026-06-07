@@ -245,8 +245,20 @@ async function enviarNotificacaoTelegram(mensagem) {
 async function buscarProdutosKalodata(pagina, quantidade, historico) {
   console.log(`\n📦 Buscando os ${quantidade} melhores produtos no Kalodata...`);
 
-  await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'networkidle' });
-  await pagina.waitForTimeout(3000);
+  // Tenta carregar o Kalodata com timeout maior e fallback para 'load'
+  try {
+    await pagina.goto('https://www.kalodata.com/product', {
+      waitUntil: 'networkidle',
+      timeout: 60000  // 60 segundos
+    });
+  } catch {
+    console.log('   ⚠️  Timeout no networkidle — tentando com load...');
+    await pagina.goto('https://www.kalodata.com/product', {
+      waitUntil: 'load',
+      timeout: 60000
+    });
+  }
+  await pagina.waitForTimeout(4000);
   console.log('   ✅ Kalodata carregado.');
 
   // ---- Aplica filtro de DATA (últimos 7 dias) ----
