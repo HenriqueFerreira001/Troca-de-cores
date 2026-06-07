@@ -1,0 +1,13 @@
+{
+  "name": "gerador-videos-tiktok",
+  "version": "1.0.0",
+  "description": "Gerador automático de vídeos para TikTok Shop usando Gemini IA",
+  "main": "gerar_video_tiktok.js",
+  "scripts": {
+    "start": "node gerar_video_tiktok.js",
+    "instalar-navegador": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
