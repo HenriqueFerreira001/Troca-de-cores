@@ -259,7 +259,41 @@ async function buscarProdutosKalodata(pagina, quantidade, historico) {
     });
   }
   await pagina.waitForTimeout(4000);
-  console.log('   ✅ Kalodata carregado.');
+
+  // ---- Aguarda o Cloudflare liberar o acesso ----
+  // O Kalodata usa Cloudflare que bloqueia bots — precisamos esperar a verificação passar
+  // Fica verificando até a página de produtos aparecer de verdade (até 60 segundos)
+  console.log('   ⏳ Verificando se o Cloudflare liberou o acesso...');
+  let tentativas = 0;
+  while (tentativas < 12) {
+    const paginaLiberada = await pagina.evaluate(() => {
+      const texto = document.body.innerText.toLowerCase();
+      const bloqueado = texto.includes('verificando') ||
+                        texto.includes('executando verificação') ||
+                        texto.includes('checking') ||
+                        texto.includes('just a moment') ||
+                        texto.includes('verification');
+      return !bloqueado;
+    });
+
+    if (paginaLiberada) {
+      console.log('   ✅ Cloudflare liberou! Kalodata carregado.');
+      break;
+    }
+
+    tentativas++;
+    console.log(`   ⏳ Aguardando Cloudflare liberar... (${tentativas * 5}s)`);
+    await pagina.waitForTimeout(5000);
+  }
+
+  if (tentativas >= 12) {
+    console.log('   ⚠️  Cloudflare não liberou automaticamente.');
+    console.log('   👉 Complete a verificação manualmente no navegador.');
+    console.log('   👉 Depois pressione ENTER para continuar...');
+    await esperarEnter();
+  }
+
+  await pagina.waitForTimeout(3000);
 
   // ---- Aplica filtro de DATA (últimos 7 dias) ----
   try {
