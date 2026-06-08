@@ -160,9 +160,11 @@ async function cmdAnalisar(quantidade) {
   console.log('='.repeat(55));
   console.log('   1. Clique em "Confirme que é humano" no navegador');
   console.log('   2. Espere a lista de produtos carregar');
-  console.log('   3. Pressione ENTER aqui para continuar');
+  console.log('   3. Digite  continuar  aqui e pressione ENTER');
   console.log('='.repeat(55));
-  await esperarEnter();
+
+  // Aguarda o comando "continuar" pelo readline (não bloqueia o terminal)
+  await aguardarComando('continuar');
 
   await pagina.waitForTimeout(2000);
 
@@ -226,8 +228,8 @@ async function cmdAnalisar(quantidade) {
 
   if (produtos.length === 0) {
     console.log('\n   ⚠️  Não encontrei produtos automaticamente.');
-    console.log('   👉 Role até ver a lista de produtos e pressione ENTER...');
-    await esperarEnter();
+    console.log('   👉 Role até ver a lista de produtos e digite  continuar  para tentar de novo.');
+    await aguardarComando('continuar');
 
     produtos = await pagina.evaluate(() => {
       const todos = document.querySelectorAll('td, [class*="name"], a');
@@ -332,8 +334,9 @@ async function gerarVideoGemini(produto, numero) {
     });
 
     if (!logado) {
-      console.log('   ⚠️  Gemini pediu login. Faça login e pressione ENTER...');
-      await esperarEnter();
+      console.log('   ⚠️  Gemini pediu login. Faça login no navegador.');
+      console.log('   👉 Depois digite  continuar  aqui.');
+      await aguardarComando('continuar');
     } else {
       console.log('   ✅ Gemini pronto.');
     }
@@ -591,6 +594,16 @@ async function notificarTelegram(mensagem) {
 // 🔧 UTILITÁRIOS
 // ============================================================
 
+// Aguarda um comando específico via readline (não bloqueia o terminal)
+// Usado para pausas onde o usuário precisa fazer algo no navegador
+let _resolverComando = null;
+let _comandoEsperado = null;
+
+function aguardarComando(cmd) {
+  _comandoEsperado = cmd;
+  return new Promise(resolve => { _resolverComando = resolve; });
+}
+
 function esperarEnter() {
   return new Promise(resolve => {
     process.stdin.resume();
@@ -627,6 +640,16 @@ async function iniciarInterface() {
     const partes = cmd.split(' ');
     const comando = partes[0];
     const argumento = partes[1];
+
+    // Se está esperando um comando específico (ex: "continuar"), resolve a promessa
+    if (_comandoEsperado && cmd === _comandoEsperado) {
+      _comandoEsperado = null;
+      const resolver = _resolverComando;
+      _resolverComando = null;
+      resolver();
+      rl.prompt();
+      return;
+    }
 
     try {
       if (comando === 'analisar') {
