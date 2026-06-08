@@ -187,10 +187,22 @@ async function cmdAnalisar(quantidade) {
 
   // Palavras que indicam texto de interface (não produto)
   const textosDaInterface = [
-    'informações do produto', 'product information', 'verificando', 'cloudflare',
-    'tendência', 'taxa', 'receita', 'revenue', 'growth', 'rank', 'category',
-    'date', 'filter', 'search', 'sort', 'price', 'commission', 'loading',
-    'aplicar', 'apply', 'reset', 'itens vendidos', 'items sold'
+    'product info', 'informações do produto', 'product information',
+    'verificando', 'cloudflare', 'tendência', 'taxa', 'receita',
+    'revenue', 'growth', 'rank', 'category', 'date', 'filter',
+    'search', 'sort', 'price', 'commission', 'loading', 'aplicar',
+    'apply', 'reset', 'itens vendidos', 'items sold', 'shop name',
+    'seller', 'vendedor', 'followers', 'seguidores'
+  ];
+
+  // Palavras que indicam roupa feminina — filtra produtos irrelevantes
+  const palavrasRoupas = [
+    'vestido', 'blusa', 'calça', 'saia', 'conjunto', 'jaqueta', 'casaco',
+    'moletom', 'cropped', 'top', 'legging', 'short', 'bermuda', 'macacão',
+    'camiseta', 'camisa', 'regata', 'body', 'kimono', 'cardigan', 'suéter',
+    'tricot', 'malha', 'feminina', 'feminino', 'mulher', 'woman', 'dress',
+    'pants', 'jacket', 'blouse', 'skirt', 'coat', 'sweater', 'lingerie',
+    'pijama', 'blusão', 'sobretudo', 'trench', 'blazer', 'colete'
   ];
 
   function isProdutoValido(texto) {
@@ -199,6 +211,11 @@ async function cmdAnalisar(quantidade) {
     if (textosDaInterface.some(p => t.includes(p))) return false;
     if (/^\d+([.,]\d+)?(%|k|m|r\$)?$/.test(t)) return false;
     return true;
+  }
+
+  function isProdutoRoupa(texto) {
+    const t = texto.toLowerCase();
+    return palavrasRoupas.some(p => t.includes(p));
   }
 
   console.log('   🔍 Analisando a página...');
@@ -239,10 +256,25 @@ async function cmdAnalisar(quantidade) {
     produtos = produtos.filter(isProdutoValido);
   }
 
-  // Remove já usados
-  const novos = produtos.filter(p => !produtoJaUsado(p));
+  // Prioriza roupas femininas, depois aceita qualquer roupa, depois qualquer produto
+  const roupasFemininas = produtos.filter(p => isProdutoRoupa(p) && !produtoJaUsado(p));
+  const qualquerRoupa = produtos.filter(p => isProdutoRoupa(p));
+  const todos = produtos.filter(p => !produtoJaUsado(p));
+
   const qtd = quantidade || CONFIG.quantidadeDeVideos;
-  ESTADO.produtosEncontrados = (novos.length > 0 ? novos : produtos).slice(0, qtd);
+  const listaPriorizada = roupasFemininas.length >= 3 ? roupasFemininas
+    : qualquerRoupa.length >= 3 ? qualquerRoupa
+    : todos.length > 0 ? todos
+    : produtos;
+
+  ESTADO.produtosEncontrados = listaPriorizada.slice(0, qtd);
+
+  if (roupasFemininas.length > 0) {
+    console.log(`   👗 ${roupasFemininas.length} produto(s) de roupa feminina encontrado(s).`);
+  } else {
+    console.log('   ⚠️  Poucos produtos de roupa feminina — usando todos os produtos encontrados.');
+    console.log('   💡 Dica: aplique o filtro "Womenswear" manualmente no Kalodata para melhores resultados.');
+  }
 
   await pagina.close();
 
