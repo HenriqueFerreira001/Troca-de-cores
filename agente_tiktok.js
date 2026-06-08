@@ -544,10 +544,36 @@ async function executarAgente() {
   console.log(`   Vídeos a gerar hoje: ${CONFIG.quantidadeDeVideos}`);
   console.log(`   Total gerado até hoje: ${historico.totalVideos} vídeos\n`);
 
+  // Tenta usar o Chrome real instalado no Windows
+  // Isso é importante para o Google aceitar o login
+  const caminhosChromeWindows = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    (process.env.LOCALAPPDATA || '') + '\\Google\\Chrome\\Application\\chrome.exe',
+  ];
+
+  let executablePath = undefined;
+  for (const caminho of caminhosChromeWindows) {
+    if (fs.existsSync(caminho)) {
+      executablePath = caminho;
+      console.log(`   ✅ Chrome encontrado: ${caminho}`);
+      break;
+    }
+  }
+
+  if (!executablePath) {
+    console.log('   ⚠️  Chrome não encontrado — usando Chromium padrão.');
+  }
+
   // Inicia o navegador com perfil salvo
   const contexto = await chromium.launchPersistentContext(CONFIG.pastasDados.perfil, {
     headless: false,
-    args: ['--start-maximized'],
+    executablePath: executablePath,
+    args: [
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+    ],
+    ignoreDefaultArgs: ['--enable-automation'],
     viewport: null,
   });
 
