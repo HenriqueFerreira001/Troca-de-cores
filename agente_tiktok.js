@@ -1,32 +1,24 @@
 /**
  * =============================================================
- *   AGENTE DE VENDAS TIKTOK SHOP COM IA — Versão 4.0
+ *   AGENTE TIKTOK SHOP — Interface de Comandos no Terminal
+ *   Versão 5.0
  * =============================================================
- *
- * 🎯 COMO FUNCIONA:
- *
- *   VOCÊ FAZ (1 clique):
- *   → Quando o Kalodata abrir, clica em "Confirme que é humano"
- *   → Pressiona ENTER no terminal
- *   → Pronto! O agente faz o resto sozinho.
- *
- *   O AGENTE FAZ SOZINHO:
- *   ✅ Abre o Kalodata automaticamente
- *   ✅ Aguarda você passar o Cloudflare (1 clique)
- *   ✅ Analisa a página e pega os 7 melhores produtos
- *   ✅ Gera um vídeo TikTok para cada produto no Gemini
- *   ✅ Nunca repete produto (histórico de 30 dias)
- *   ✅ Salva print de cada vídeo gerado
- *   ✅ Gera relatório do dia
- *   ✅ Notifica no Telegram quando terminar
- *   ✅ Pode rodar todo dia automaticamente
  *
  * ▶️  COMO RODAR:
  *   node agente_tiktok.js
  *
- *   Todo dia automaticamente:
- *   node agente_tiktok.js --agendar
- *
+ * 💬 COMANDOS DISPONÍVEIS:
+ *   analisar              → Busca os 7 melhores produtos no Kalodata
+ *   gerar                 → Gera vídeos para os produtos encontrados
+ *   gerar 3               → Gera apenas 3 vídeos
+ *   status                → Mostra produtos prontos para gerar vídeo
+ *   historico             → Mostra produtos já usados
+ *   relatorio             → Mostra relatório do dia
+ *   agendar 09:00         → Agenda execução automática diária
+ *   parar agendamento     → Para o agendamento automático
+ *   limpar historico      → Limpa o histórico de produtos usados
+ *   ajuda                 → Lista todos os comandos
+ *   sair                  → Encerra o agente
  * =============================================================
  */
 
@@ -34,6 +26,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const readline = require('readline');
 
 
 // ============================================================
@@ -41,27 +34,29 @@ const https = require('https');
 // ============================================================
 
 const CONFIG = {
-
-  // Quantos produtos buscar e quantos vídeos gerar por execução
   quantidadeDeVideos: 7,
-
-  // Horário para rodar automaticamente todo dia (formato 24h)
-  horarioAutomatico: '09:00',
-
-  // Tempo máximo por vídeo em milissegundos (3 minutos)
-  tempoMaximoPorVideo: 180000,
-
-  // Notificações no Telegram (opcional)
+  tempoMaximoPorVideo: 180000, // 3 minutos
   telegramToken: '',
   telegramChatId: '',
-
-  // Arquivos e pastas do agente
   arquivos: {
     historico: './historico.json',
     perfil: './perfil_navegador',
     relatorios: './relatorios',
     screenshots: './screenshots',
   }
+};
+
+
+// ============================================================
+// 📦 ESTADO DO AGENTE
+// Guarda os produtos encontrados e o contexto do navegador
+// ============================================================
+
+const ESTADO = {
+  produtosEncontrados: [],   // Produtos buscados no Kalodata
+  navegadorAberto: false,    // Se o navegador está aberto
+  contexto: null,            // Contexto do Playwright
+  agendamento: null,         // Timer do agendamento automático
 };
 
 
@@ -80,7 +75,7 @@ function inicializar() {
 
 
 // ============================================================
-// 📋 HISTÓRICO — evita repetir produtos
+// 📋 HISTÓRICO
 // ============================================================
 
 function carregarHistorico() {
@@ -91,7 +86,8 @@ function salvarHistorico(historico) {
   fs.writeFileSync(CONFIG.arquivos.historico, JSON.stringify(historico, null, 2));
 }
 
-function produtoJaUsado(historico, nome) {
+function produtoJaUsado(nome) {
+  const historico = carregarHistorico();
   const trintaDias = Date.now() - (30 * 24 * 60 * 60 * 1000);
   return historico.produtos.some(p =>
     p.nome.toLowerCase() === nome.toLowerCase() &&
@@ -99,7 +95,8 @@ function produtoJaUsado(historico, nome) {
   );
 }
 
-function registrarNoHistorico(historico, nome, videoGerado) {
+function registrarNoHistorico(nome, videoGerado) {
+  const historico = carregarHistorico();
   historico.produtos.push({ nome, data: new Date().toISOString(), videoGerado });
   if (videoGerado) historico.totalVideos++;
   historico.ultimaExecucao = new Date().toISOString();
@@ -108,30 +105,466 @@ function registrarNoHistorico(historico, nome, videoGerado) {
 
 
 // ============================================================
-// 📊 RELATÓRIO
+// 🌐 NAVEGADOR — Abre e fecha o Edge
 // ============================================================
 
-function salvarRelatorio(relatorio) {
-  relatorio.fim = new Date().toISOString();
-  const data = new Date().toISOString().split('T')[0];
-  const duracao = Math.floor((new Date(relatorio.fim) - new Date(relatorio.inicio)) / 1000 / 60);
-  const texto = `
-==========================================
-  RELATÓRIO — AGENTE TIKTOK SHOP
-  Data: ${data} | Duração: ${duracao} min
-==========================================
-Vídeos gerados: ${relatorio.totalGerados}
-Falhas: ${relatorio.totalErros}
+async function abrirNavegador() {
+  if (ESTADO.navegadorAberto) return;
 
-PRODUTOS:
-${relatorio.produtos.map((p, i) =>
-  `  ${i + 1}. ${p.nome}\n     ${p.videoGerado ? '✅ Gerado' : '❌ Falhou'} — ${p.horario}`
-).join('\n')}
-==========================================
-`;
+  const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+  const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
+
+  ESTADO.contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
+    headless: false,
+    executablePath,
+    args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
+    ignoreDefaultArgs: ['--enable-automation'],
+    viewport: null,
+  });
+
+  ESTADO.navegadorAberto = true;
+  console.log('   ✅ Navegador aberto.');
+}
+
+async function fecharNavegador() {
+  if (ESTADO.contexto) {
+    await ESTADO.contexto.close();
+    ESTADO.contexto = null;
+    ESTADO.navegadorAberto = false;
+    console.log('   ✅ Navegador fechado.');
+  }
+}
+
+
+// ============================================================
+// 🛍️  COMANDO: analisar
+// Busca os melhores produtos no Kalodata
+// ============================================================
+
+async function cmdAnalisar(quantidade) {
+  console.log('\n📦 Abrindo o Kalodata para buscar produtos...');
+
+  await abrirNavegador();
+  const pagina = await ESTADO.contexto.newPage();
+
+  try {
+    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'load', timeout: 60000 });
+  } catch {
+    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  }
+
+  await pagina.waitForTimeout(3000);
+
+  console.log('\n' + '='.repeat(55));
+  console.log('   🔐 AÇÃO NECESSÁRIA — 1 clique!');
+  console.log('='.repeat(55));
+  console.log('   1. Clique em "Confirme que é humano" no navegador');
+  console.log('   2. Espere a lista de produtos carregar');
+  console.log('   3. Pressione ENTER aqui para continuar');
+  console.log('='.repeat(55));
+  await esperarEnter();
+
+  await pagina.waitForTimeout(2000);
+
+  // Tenta aplicar filtros automaticamente
+  try {
+    await pagina.locator('text=Last 7 days, text=7 days').first().click({ timeout: 4000 });
+    await pagina.waitForTimeout(1500);
+    console.log('   ✅ Filtro de data: Últimos 7 dias');
+  } catch { }
+
+  try {
+    await pagina.locator('text=Category, text=Categoria').first().click({ timeout: 4000 });
+    await pagina.waitForTimeout(1000);
+    await pagina.locator('text=Womenswear, text=Women, text=Roupas').first().click({ timeout: 4000 });
+    await pagina.waitForTimeout(1000);
+    await pagina.locator('text=Apply, text=Aplicar').first().click({ timeout: 4000 });
+    await pagina.waitForTimeout(3000);
+    console.log('   ✅ Filtro de categoria: Roupas Femininas');
+  } catch { }
+
+  // Palavras que indicam texto de interface (não produto)
+  const textosDaInterface = [
+    'informações do produto', 'product information', 'verificando', 'cloudflare',
+    'tendência', 'taxa', 'receita', 'revenue', 'growth', 'rank', 'category',
+    'date', 'filter', 'search', 'sort', 'price', 'commission', 'loading',
+    'aplicar', 'apply', 'reset', 'itens vendidos', 'items sold'
+  ];
+
+  function isProdutoValido(texto) {
+    const t = texto.toLowerCase().trim();
+    if (t.length < 10 || t.length > 300) return false;
+    if (textosDaInterface.some(p => t.includes(p))) return false;
+    if (/^\d+([.,]\d+)?(%|k|m|r\$)?$/.test(t)) return false;
+    return true;
+  }
+
+  console.log('   🔍 Analisando a página...');
+  await pagina.waitForTimeout(2000);
+
+  let produtos = await pagina.evaluate(() => {
+    const seletores = [
+      '[class*="product-name"]', '[class*="productName"]', '[class*="product_name"]',
+      '[class*="item-name"]', '[class*="itemName"]', '[class*="goods-name"]',
+      'td:nth-child(2) a', 'td:nth-child(2) span', '.ant-table-cell:nth-child(2)',
+    ];
+    for (const seletor of seletores) {
+      const els = document.querySelectorAll(seletor);
+      if (els.length >= 3) {
+        const textos = Array.from(els).map(el => el.textContent.trim()).filter(t => t.length > 5);
+        if (textos.length >= 3) return textos.slice(0, 20);
+      }
+    }
+    const links = document.querySelectorAll('table a, .table a');
+    if (links.length > 0) {
+      return Array.from(links).map(el => el.textContent.trim()).filter(t => t.length > 5).slice(0, 20);
+    }
+    return [];
+  });
+
+  produtos = produtos.filter(isProdutoValido);
+
+  if (produtos.length === 0) {
+    console.log('\n   ⚠️  Não encontrei produtos automaticamente.');
+    console.log('   👉 Role até ver a lista de produtos e pressione ENTER...');
+    await esperarEnter();
+
+    produtos = await pagina.evaluate(() => {
+      const todos = document.querySelectorAll('td, [class*="name"], a');
+      return Array.from(todos).map(el => el.textContent.trim())
+        .filter(t => t.length > 15 && t.length < 200).slice(0, 30);
+    });
+    produtos = produtos.filter(isProdutoValido);
+  }
+
+  // Remove já usados
+  const novos = produtos.filter(p => !produtoJaUsado(p));
+  const qtd = quantidade || CONFIG.quantidadeDeVideos;
+  ESTADO.produtosEncontrados = (novos.length > 0 ? novos : produtos).slice(0, qtd);
+
+  await pagina.close();
+
+  if (ESTADO.produtosEncontrados.length === 0) {
+    console.log('\n   ❌ Nenhum produto encontrado. Tente novamente.');
+    return;
+  }
+
+  console.log(`\n   ✅ ${ESTADO.produtosEncontrados.length} produto(s) encontrado(s):\n`);
+  ESTADO.produtosEncontrados.forEach((p, i) => {
+    const jaUsado = produtoJaUsado(p) ? ' ⚠️ (já usado recentemente)' : '';
+    console.log(`   ${i + 1}. ${p.substring(0, 65)}${jaUsado}`);
+  });
+  console.log('\n   💡 Digite "gerar" para criar os vídeos agora.');
+}
+
+
+// ============================================================
+// 🎬 COMANDO: gerar
+// Gera vídeos no Gemini para os produtos encontrados
+// ============================================================
+
+async function cmdGerar(quantidade) {
+  if (ESTADO.produtosEncontrados.length === 0) {
+    console.log('\n   ⚠️  Nenhum produto em memória. Digite "analisar" primeiro.');
+    return;
+  }
+
+  const qtd = quantidade || ESTADO.produtosEncontrados.length;
+  const lista = ESTADO.produtosEncontrados.slice(0, qtd);
+
+  console.log(`\n🎬 Gerando ${lista.length} vídeo(s)...\n`);
+
+  await abrirNavegador();
+
+  let gerados = 0;
+  let falhas = 0;
+
+  for (let i = 0; i < lista.length; i++) {
+    const produto = lista[i];
+    console.log(`${'─'.repeat(55)}`);
+    console.log(`🎬 Vídeo ${i + 1} de ${lista.length}: "${produto.substring(0, 50)}"`);
+    console.log('─'.repeat(55));
+
+    const ok = await gerarVideoGemini(produto, i + 1);
+    registrarNoHistorico(produto, ok);
+
+    if (ok) gerados++;
+    else falhas++;
+
+    // Remove da lista de pendentes
+    ESTADO.produtosEncontrados = ESTADO.produtosEncontrados.filter(p => p !== produto);
+
+    if (i < lista.length - 1) {
+      console.log('   ⏸️  Aguardando 15s antes do próximo...');
+      await new Promise(r => setTimeout(r, 15000));
+    }
+  }
+
+  const historico = carregarHistorico();
+  console.log('\n' + '='.repeat(55));
+  console.log('   🏁 GERAÇÃO CONCLUÍDA!');
+  console.log(`   ✅ Gerados: ${gerados} | ❌ Falhas: ${falhas}`);
+  console.log(`   📊 Total histórico: ${historico.totalVideos} vídeos`);
+  console.log('='.repeat(55));
+
+  await notificarTelegram(
+    `🎬 <b>Vídeos gerados!</b>\n✅ ${gerados} gerados\n❌ ${falhas} falhas\n📊 Total: ${historico.totalVideos}`
+  );
+
+  // Salva relatório
+  const data = new Date().toISOString().split('T')[0];
+  const rel = `=== RELATÓRIO ${data} ===\nGerados: ${gerados} | Falhas: ${falhas}\n\nProdutos:\n${lista.map((p, i) => `${i+1}. ${p}`).join('\n')}`;
+  fs.writeFileSync(path.join(CONFIG.arquivos.relatorios, `relatorio_${data}.txt`), rel);
+  console.log(`\n   📊 Relatório salvo em /relatorios/relatorio_${data}.txt`);
+}
+
+// Função interna que gera um vídeo no Gemini
+async function gerarVideoGemini(produto, numero) {
+  const pagina = await ESTADO.contexto.newPage();
+  try {
+    await pagina.goto('https://gemini.google.com', { waitUntil: 'load', timeout: 60000 });
+    await pagina.waitForTimeout(4000);
+
+    // Verifica login
+    const logado = await pagina.evaluate(() => {
+      const t = document.body.innerText.toLowerCase();
+      return !t.includes('fazer login') && !t.includes('sign in');
+    });
+
+    if (!logado) {
+      console.log('   ⚠️  Gemini pediu login. Faça login e pressione ENTER...');
+      await esperarEnter();
+    } else {
+      console.log('   ✅ Gemini pronto.');
+    }
+
+    // Monta prompt adaptado ao tipo de roupa
+    const prompt = montarPrompt(produto);
+
+    // Digita e envia
+    const campo = pagina.locator('[contenteditable="true"], textarea, [role="textbox"]').first();
+    await campo.click({ timeout: 10000 });
+    await pagina.waitForTimeout(500);
+    await campo.type(prompt, { delay: 10 });
+
+    try {
+      await pagina.locator('button[aria-label*="Send"], button[aria-label*="Enviar"]').first().click({ timeout: 8000 });
+    } catch {
+      await pagina.keyboard.press('Enter');
+    }
+    console.log('   🚀 Prompt enviado. Aguardando vídeo...');
+
+    // Aguarda geração
+    const inicio = Date.now();
+    let ok = false;
+    while (Date.now() - inicio < CONFIG.tempoMaximoPorVideo) {
+      const seg = Math.floor((Date.now() - inicio) / 1000);
+      process.stdout.write(`   ⏱️  ${seg}s\r`);
+      ok = await pagina.evaluate(() => {
+        const t = document.body.innerText.toLowerCase();
+        return t.includes('your video is ready') || t.includes('video is ready') ||
+               t.includes('vídeo está pronto') || document.querySelector('video') !== null;
+      }).catch(() => false);
+      if (ok) { console.log(`\n   🎉 Vídeo ${numero} gerado!`); break; }
+      await pagina.waitForTimeout(5000);
+    }
+
+    if (!ok) console.log(`\n   ⚠️  Tempo esgotado para o vídeo ${numero}.`);
+
+    // Screenshot
+    const arquivo = path.join(CONFIG.arquivos.screenshots, `video_${Date.now()}_${numero}.png`);
+    await pagina.screenshot({ path: arquivo, fullPage: true });
+    console.log(`   📸 Print: ${arquivo}`);
+
+    return ok;
+  } catch (e) {
+    console.error(`   ❌ Erro: ${e.message}`);
+    return false;
+  } finally {
+    await pagina.close();
+  }
+}
+
+// Adapta o prompt conforme o tipo de roupa
+function montarPrompt(produto) {
+  const p = produto.toLowerCase();
+  let estilo = 'mirror selfie in a bedroom';
+  let audio = 'soft bedroom ambient sound, light breathing, soft footsteps on floor';
+
+  if (p.includes('vestido') || p.includes('dress')) {
+    estilo = 'mirror selfie in a bright bedroom, twirling slightly to show the dress flow';
+  } else if (p.includes('calça') || p.includes('pants') || p.includes('legging')) {
+    estilo = 'mirror selfie showing full body, emphasizing the fit of the pants';
+  } else if (p.includes('blusa') || p.includes('camiseta') || p.includes('top')) {
+    estilo = 'mirror selfie in a bedroom, showing upper body and tucking the top';
+  } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
+    estilo = 'mirror selfie opening and closing the jacket to show the full look';
+  }
+
+  return (
+    `Generate a vertical 9:16 video for TikTok: Vertical ${estilo} with soft natural lighting. ` +
+    `A young woman wearing ${produto} holds her phone in front of her face, filming her reflection ` +
+    `in a full-length mirror. Full body frontal pose, slight weight shift, small clothing adjustment. ` +
+    `She takes a small step toward the mirror with a light body sway to show how the clothing drapes ` +
+    `and moves, then slowly turns to a side profile showing the silhouette of the outfit in the mirror. ` +
+    `Relaxed, natural posture. Authentic TikTok fitting room style, UGC handheld creator style, ` +
+    `natural lighting. Audio: ${audio}, no speech, no music.`
+  );
+}
+
+
+// ============================================================
+// 📊 COMANDO: status
+// Mostra produtos prontos para gerar vídeo
+// ============================================================
+
+function cmdStatus() {
+  console.log('\n📋 STATUS DO AGENTE:\n');
+
+  if (ESTADO.produtosEncontrados.length === 0) {
+    console.log('   Nenhum produto em memória.');
+    console.log('   → Digite "analisar" para buscar produtos no Kalodata.\n');
+  } else {
+    console.log(`   ${ESTADO.produtosEncontrados.length} produto(s) prontos para gerar vídeo:\n`);
+    ESTADO.produtosEncontrados.forEach((p, i) => {
+      console.log(`   ${i + 1}. ${p.substring(0, 65)}`);
+    });
+    console.log('\n   → Digite "gerar" para criar os vídeos.');
+    console.log(`   → Digite "gerar 3" para criar apenas 3 vídeos.\n`);
+  }
+
+  const historico = carregarHistorico();
+  console.log(`   📊 Total de vídeos gerados até hoje: ${historico.totalVideos}`);
+  console.log(`   🕐 Última execução: ${historico.ultimaExecucao ? new Date(historico.ultimaExecucao).toLocaleString('pt-BR') : 'Nunca'}\n`);
+}
+
+
+// ============================================================
+// 📜 COMANDO: historico
+// Mostra os últimos produtos usados
+// ============================================================
+
+function cmdHistorico() {
+  const historico = carregarHistorico();
+
+  if (historico.produtos.length === 0) {
+    console.log('\n   📋 Histórico vazio — nenhum produto gerado ainda.\n');
+    return;
+  }
+
+  console.log(`\n📜 HISTÓRICO (últimos 20 produtos):\n`);
+  const ultimos = historico.produtos.slice(-20).reverse();
+  ultimos.forEach((p, i) => {
+    const data = new Date(p.data).toLocaleDateString('pt-BR');
+    const status = p.videoGerado ? '✅' : '❌';
+    console.log(`   ${i + 1}. ${status} ${data} — ${p.nome.substring(0, 55)}`);
+  });
+  console.log(`\n   Total: ${historico.totalVideos} vídeos gerados\n`);
+}
+
+
+// ============================================================
+// 📄 COMANDO: relatorio
+// Mostra o relatório do dia atual
+// ============================================================
+
+function cmdRelatorio() {
+  const data = new Date().toISOString().split('T')[0];
   const arquivo = path.join(CONFIG.arquivos.relatorios, `relatorio_${data}.txt`);
-  fs.writeFileSync(arquivo, texto);
-  console.log(`   📊 Relatório salvo: ${arquivo}`);
+
+  if (!fs.existsSync(arquivo)) {
+    console.log(`\n   📄 Nenhum relatório para hoje (${data}) ainda.\n`);
+    return;
+  }
+
+  console.log('\n' + fs.readFileSync(arquivo, 'utf8'));
+}
+
+
+// ============================================================
+// ⏰ COMANDO: agendar HH:MM
+// Agenda execução automática diária
+// ============================================================
+
+function cmdAgendar(horario) {
+  if (!horario || !/^\d{2}:\d{2}$/.test(horario)) {
+    console.log('\n   ⚠️  Formato inválido. Use: agendar 09:00\n');
+    return;
+  }
+
+  if (ESTADO.agendamento) {
+    clearTimeout(ESTADO.agendamento);
+    ESTADO.agendamento = null;
+  }
+
+  const [hora, minuto] = horario.split(':').map(Number);
+
+  function agendarProxima() {
+    const agora = new Date();
+    const proxima = new Date();
+    proxima.setHours(hora, minuto, 0, 0);
+    if (proxima <= agora) proxima.setDate(proxima.getDate() + 1);
+
+    const ms = proxima - agora;
+    const h = Math.floor(ms / 1000 / 60 / 60);
+    const m = Math.floor((ms / 1000 / 60) % 60);
+
+    console.log(`\n   ⏰ Agendado para ${proxima.toLocaleString('pt-BR')} (em ${h}h ${m}min)`);
+    console.log('   ℹ️  Deixe o terminal aberto. Use "parar agendamento" para cancelar.\n');
+
+    ESTADO.agendamento = setTimeout(async () => {
+      console.log('\n🔔 Horário agendado! Iniciando execução automática...\n');
+      await cmdAnalisar();
+      await cmdGerar();
+      agendarProxima(); // Agenda o próximo dia
+    }, ms);
+  }
+
+  agendarProxima();
+}
+
+
+// ============================================================
+// 🧹 COMANDO: limpar historico
+// ============================================================
+
+function cmdLimparHistorico() {
+  salvarHistorico({ produtos: [], totalVideos: 0, ultimaExecucao: null });
+  ESTADO.produtosEncontrados = [];
+  console.log('\n   ✅ Histórico limpo com sucesso.\n');
+}
+
+
+// ============================================================
+// ❓ COMANDO: ajuda
+// ============================================================
+
+function cmdAjuda() {
+  console.log(`
+╔══════════════════════════════════════════════════════╗
+║          AGENTE TIKTOK SHOP — COMANDOS               ║
+╠══════════════════════════════════════════════════════╣
+║                                                      ║
+║  analisar           Busca produtos no Kalodata       ║
+║  analisar 5         Busca apenas 5 produtos          ║
+║                                                      ║
+║  gerar              Gera vídeos de todos os produtos ║
+║  gerar 3            Gera apenas 3 vídeos             ║
+║                                                      ║
+║  status             Mostra produtos na memória       ║
+║  historico          Mostra produtos já usados        ║
+║  relatorio          Mostra relatório do dia          ║
+║                                                      ║
+║  agendar 09:00      Agenda execução diária às 9h     ║
+║  parar agendamento  Cancela o agendamento            ║
+║                                                      ║
+║  limpar historico   Limpa o histórico de produtos    ║
+║  fechar navegador   Fecha o navegador                ║
+║  ajuda              Mostra estes comandos            ║
+║  sair               Encerra o agente                 ║
+║                                                      ║
+╚══════════════════════════════════════════════════════╝
+`);
 }
 
 
@@ -155,392 +588,6 @@ async function notificarTelegram(mensagem) {
 
 
 // ============================================================
-// 🛍️  ETAPA 1: BUSCAR PRODUTOS NO KALODATA
-// ============================================================
-
-async function buscarProdutosKalodata(contexto, historico) {
-  console.log('\n📦 Abrindo o Kalodata para buscar os melhores produtos...');
-
-  const pagina = await contexto.newPage();
-
-  // Abre o Kalodata
-  try {
-    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'load', timeout: 60000 });
-  } catch {
-    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  }
-
-  await pagina.waitForTimeout(3000);
-
-  // ---- AGUARDA O USUÁRIO PASSAR O CLOUDFLARE ----
-  console.log('\n' + '='.repeat(60));
-  console.log('   🔐 AÇÃO NECESSÁRIA — 1 clique só!');
-  console.log('='.repeat(60));
-  console.log('   👉 No navegador que abriu:');
-  console.log('      1. Clique em "Confirme que é humano" se aparecer');
-  console.log('      2. Espere a lista de produtos do Kalodata carregar');
-  console.log('      3. Volte aqui e pressione ENTER para continuar');
-  console.log('='.repeat(60));
-  await esperarEnter();
-
-  // Aguarda a página estabilizar após o ENTER
-  await pagina.waitForTimeout(2000);
-
-  // ---- TENTA APLICAR FILTROS AUTOMATICAMENTE ----
-  console.log('\n   🔧 Tentando aplicar filtros automaticamente...');
-
-  // Filtro de data: últimos 7 dias
-  try {
-    const filtroData = pagina.locator('text=Last 7 days, text=7 days, text=Últimos 7').first();
-    await filtroData.click({ timeout: 5000 });
-    await pagina.waitForTimeout(1500);
-    console.log('   ✅ Filtro de data aplicado.');
-  } catch {
-    console.log('   ℹ️  Filtro de data não encontrado — continuando sem ele.');
-  }
-
-  // Filtro de categoria: roupas femininas
-  try {
-    const btnCategoria = pagina.locator('text=Category, text=Categoria').first();
-    await btnCategoria.click({ timeout: 5000 });
-    await pagina.waitForTimeout(1500);
-
-    const opcaoRoupa = pagina.locator('text=Womenswear, text=Women, text=Roupas').first();
-    await opcaoRoupa.click({ timeout: 5000 });
-    await pagina.waitForTimeout(1000);
-
-    const btnAplicar = pagina.locator('text=Apply, text=Aplicar').first();
-    await btnAplicar.click({ timeout: 5000 });
-    await pagina.waitForTimeout(3000);
-    console.log('   ✅ Filtro de categoria aplicado.');
-  } catch {
-    console.log('   ℹ️  Filtro de categoria não aplicado automaticamente.');
-  }
-
-  // ---- COLETA OS PRODUTOS DA PÁGINA ----
-  console.log('   🔍 Analisando a página e coletando os melhores produtos...');
-  await pagina.waitForTimeout(2000);
-
-  // Palavras que indicam texto de interface (não produto)
-  const textosDaInterface = [
-    'verificando', 'cloudflare', 'verificação', 'checking', 'moment',
-    'tendência', 'taxa', 'receita', 'revenue', 'growth', 'sold', 'rank',
-    'category', 'date', 'filter', 'search', 'sort', 'price', 'commission',
-    'items', 'product', 'brand', 'shop', 'video', 'creator', 'últimos',
-    'loading', 'carregando', 'aplicar', 'apply', 'reset'
-  ];
-
-  function isProdutoValido(texto) {
-    const t = texto.toLowerCase().trim();
-    if (t.length < 10 || t.length > 300) return false;
-    if (textosDaInterface.some(p => t === p || t.startsWith(p + ' ') || t.endsWith(' ' + p))) return false;
-    if (/^\d+([.,]\d+)?(%|k|m)?$/.test(t)) return false; // ignora números puros
-    return true;
-  }
-
-  // Tenta vários seletores específicos do Kalodata para pegar nomes de produtos
-  let produtos = await pagina.evaluate(() => {
-    const seletores = [
-      '[class*="product-name"]',
-      '[class*="productName"]',
-      '[class*="product_name"]',
-      '[class*="item-name"]',
-      '[class*="itemName"]',
-      '[class*="goods-name"]',
-      '[class*="goodsName"]',
-      'td:nth-child(2) a',
-      'td:nth-child(2) span',
-      '.ant-table-cell:nth-child(2)',
-    ];
-
-    for (const seletor of seletores) {
-      const els = document.querySelectorAll(seletor);
-      if (els.length >= 3) {
-        const textos = Array.from(els).map(el => el.textContent.trim()).filter(t => t.length > 5);
-        if (textos.length >= 3) return textos.slice(0, 20);
-      }
-    }
-
-    // Fallback: pega todos os links da tabela
-    const links = document.querySelectorAll('table a, .table a');
-    if (links.length > 0) {
-      return Array.from(links).map(el => el.textContent.trim()).filter(t => t.length > 5).slice(0, 20);
-    }
-
-    return [];
-  });
-
-  // Filtra textos inválidos
-  produtos = produtos.filter(isProdutoValido);
-
-  // Se não encontrou nada automaticamente, pede ajuda
-  if (produtos.length === 0) {
-    console.log('\n   ⚠️  Não consegui detectar os produtos automaticamente.');
-    console.log('   👉 Role a página até ver a lista de produtos no navegador.');
-    console.log('   👉 Quando a lista estiver visível, pressione ENTER...');
-    await esperarEnter();
-
-    // Tenta novamente depois da instrução
-    produtos = await pagina.evaluate(() => {
-      const todos = document.querySelectorAll('td, [class*="name"], [class*="title"], a');
-      return Array.from(todos)
-        .map(el => el.textContent.trim())
-        .filter(t => t.length > 15 && t.length < 200)
-        .slice(0, 30);
-    });
-    produtos = produtos.filter(isProdutoValido);
-  }
-
-  // Remove produtos já usados recentemente
-  const produtosNovos = produtos.filter(p => !produtoJaUsado(historico, p));
-  const listafinal = (produtosNovos.length > 0 ? produtosNovos : produtos).slice(0, CONFIG.quantidadeDeVideos);
-
-  console.log(`\n   ✅ ${listafinal.length} produto(s) selecionado(s):`);
-  listafinal.forEach((p, i) => console.log(`      ${i + 1}. ${p.substring(0, 70)}`));
-
-  await pagina.close();
-  return listafinal;
-}
-
-
-// ============================================================
-// 🎬 ETAPA 2: GERAR VÍDEO NO GEMINI
-// ============================================================
-
-async function gerarVideo(contexto, produto, indice, total) {
-  console.log(`\n${'─'.repeat(60)}`);
-  console.log(`🎬 Gerando vídeo ${indice + 1} de ${total}`);
-  console.log(`   Produto: "${produto.substring(0, 60)}"`);
-  console.log('─'.repeat(60));
-
-  const pagina = await contexto.newPage();
-
-  try {
-    await pagina.goto('https://gemini.google.com', { waitUntil: 'load', timeout: 60000 });
-    await pagina.waitForTimeout(4000);
-
-    // Verifica login
-    const logado = await pagina.evaluate(() => {
-      const t = document.body.innerText.toLowerCase();
-      return !t.includes('fazer login') && !t.includes('sign in') && !t.includes('log in');
-    });
-
-    if (!logado) {
-      console.log('   ⚠️  Gemini pediu login.');
-      console.log('   👉 Faça login no Google no navegador e pressione ENTER...');
-      await esperarEnter();
-    } else {
-      console.log('   ✅ Logado no Gemini.');
-    }
-
-    // Monta o prompt
-    const prompt =
-      `Generate a vertical 9:16 video for TikTok: ` +
-      `Vertical mirror selfie in a bedroom with soft natural lighting. ` +
-      `A young woman wearing ${produto} ` +
-      `holds her phone in front of her face, filming her reflection in a full-length mirror. ` +
-      `Full body frontal pose, slight weight shift, small clothing adjustment. ` +
-      `She takes a small step toward the mirror with a light body sway to show how the clothing ` +
-      `drapes and moves, then slowly turns to a side profile showing the silhouette of the outfit ` +
-      `in the mirror. Relaxed, natural posture. Authentic TikTok fitting room style, ` +
-      `UGC handheld creator style, natural lighting. ` +
-      `Audio: soft bedroom ambient sound, light breathing, soft footsteps on floor, no speech, no music.`;
-
-    // Digita o prompt
-    const campo = pagina.locator('[contenteditable="true"], textarea, [role="textbox"]').first();
-    await campo.click({ timeout: 10000 });
-    await pagina.waitForTimeout(500);
-    await campo.type(prompt, { delay: 10 });
-    console.log('   ✅ Prompt digitado.');
-
-    // Envia
-    try {
-      await pagina.locator('button[aria-label*="Send"], button[aria-label*="Enviar"]').first().click({ timeout: 8000 });
-    } catch {
-      await pagina.keyboard.press('Enter');
-    }
-    console.log('   🚀 Enviado! Aguardando geração do vídeo...');
-    console.log('   (Isso leva de 1 a 3 minutos — aguarde)');
-
-    // Aguarda o vídeo
-    const inicio = Date.now();
-    let videoGerado = false;
-
-    while (Date.now() - inicio < CONFIG.tempoMaximoPorVideo) {
-      const seg = Math.floor((Date.now() - inicio) / 1000);
-      process.stdout.write(`   ⏱️  Aguardando... ${seg}s\r`);
-
-      videoGerado = await pagina.evaluate(() => {
-        const t = document.body.innerText.toLowerCase();
-        return (
-          t.includes('your video is ready') ||
-          t.includes('vídeo está pronto') ||
-          t.includes('video is ready') ||
-          document.querySelector('video') !== null
-        );
-      }).catch(() => false);
-
-      if (videoGerado) {
-        console.log(`\n   🎉 Vídeo ${indice + 1} gerado com sucesso!`);
-        break;
-      }
-      await pagina.waitForTimeout(5000);
-    }
-
-    if (!videoGerado) {
-      console.log(`\n   ⚠️  Tempo máximo atingido — verifique o navegador.`);
-    }
-
-    // Salva screenshot
-    const arquivo = path.join(CONFIG.arquivos.screenshots, `video_${Date.now()}_${indice + 1}.png`);
-    await pagina.screenshot({ path: arquivo, fullPage: true });
-    console.log(`   📸 Print salvo: ${arquivo}`);
-
-    return videoGerado;
-
-  } catch (e) {
-    console.error(`   ❌ Erro ao gerar vídeo: ${e.message}`);
-    return false;
-  } finally {
-    await pagina.close();
-  }
-}
-
-
-// ============================================================
-// 🚀 EXECUÇÃO PRINCIPAL
-// ============================================================
-
-async function executarAgente() {
-  const historico = carregarHistorico();
-  const relatorio = {
-    inicio: new Date().toISOString(),
-    fim: null,
-    produtos: [],
-    totalGerados: 0,
-    totalErros: 0,
-  };
-
-  console.log('\n' + '='.repeat(60));
-  console.log(`   🤖 AGENTE TIKTOK SHOP v4.0 — ${new Date().toLocaleString('pt-BR')}`);
-  console.log('='.repeat(60));
-  console.log(`   Vídeos a gerar: ${CONFIG.quantidadeDeVideos}`);
-  console.log(`   Total histórico: ${historico.totalVideos} vídeos`);
-
-  // Inicia o Edge (ou Chromium se Edge não encontrado)
-  const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-  const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
-  console.log(executablePath ? '\n   ✅ Usando Microsoft Edge.' : '\n   ℹ️  Usando Chromium.');
-
-  const contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
-    headless: false,
-    executablePath,
-    args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
-    ignoreDefaultArgs: ['--enable-automation'],
-    viewport: null,
-  });
-
-  console.log('   ✅ Navegador iniciado.');
-
-  try {
-    // ---- Busca produtos no Kalodata (com 1 clique seu) ----
-    const produtos = await buscarProdutosKalodata(contexto, historico);
-
-    if (produtos.length === 0) {
-      console.log('\n   ❌ Nenhum produto encontrado. Encerrando.');
-      return;
-    }
-
-    // ---- Gera vídeo para cada produto ----
-    for (let i = 0; i < produtos.length; i++) {
-      const produto = produtos[i];
-      const videoGerado = await gerarVideo(contexto, produto, i, produtos.length);
-
-      registrarNoHistorico(historico, produto, videoGerado);
-      relatorio.produtos.push({
-        nome: produto,
-        videoGerado,
-        horario: new Date().toLocaleTimeString('pt-BR'),
-      });
-      if (videoGerado) relatorio.totalGerados++;
-      else relatorio.totalErros++;
-
-      // Pausa entre vídeos para não sobrecarregar o Gemini
-      if (i < produtos.length - 1) {
-        console.log('\n   ⏸️  Aguardando 15 segundos antes do próximo vídeo...');
-        await new Promise(r => setTimeout(r, 15000));
-      }
-    }
-
-    // ---- Relatório e resumo ----
-    salvarRelatorio(relatorio);
-
-    const historicofinal = carregarHistorico();
-    console.log('\n' + '='.repeat(60));
-    console.log('   🏁 AGENTE FINALIZADO!');
-    console.log('='.repeat(60));
-    console.log(`   ✅ Vídeos gerados hoje: ${relatorio.totalGerados}`);
-    console.log(`   ❌ Falhas: ${relatorio.totalErros}`);
-    console.log(`   📊 Total histórico: ${historicofinal.totalVideos} vídeos`);
-    console.log(`   📁 Screenshots: pasta /screenshots`);
-    console.log(`   📋 Relatório: pasta /relatorios`);
-    console.log('\n   👉 Baixe os vídeos no navegador e poste no TikTok Shop!');
-    console.log('='.repeat(60));
-
-    await notificarTelegram(
-      `🎬 <b>Agente TikTok Shop finalizado!</b>\n\n` +
-      `✅ Gerados: ${relatorio.totalGerados}\n` +
-      `❌ Falhas: ${relatorio.totalErros}\n` +
-      `📊 Total: ${historicofinal.totalVideos} vídeos\n\n` +
-      relatorio.produtos.map((p, i) =>
-        `${i + 1}. ${p.nome.substring(0, 40)} ${p.videoGerado ? '✅' : '❌'}`
-      ).join('\n')
-    );
-
-    console.log('\n   🌐 Navegador aberto — baixe os vídeos e pressione CTRL+C.\n');
-    await new Promise(() => {});
-
-  } catch (e) {
-    console.error(`\n❌ Erro: ${e.message}`);
-    await notificarTelegram(`❌ Erro no Agente TikTok: ${e.message}`);
-    salvarRelatorio(relatorio);
-  } finally {
-    await contexto.close();
-  }
-}
-
-
-// ============================================================
-// ⏰ AGENDAMENTO AUTOMÁTICO
-// ============================================================
-
-async function agendarExecucaoDiaria() {
-  console.log('\n' + '='.repeat(60));
-  console.log('   ⏰ MODO AGENDAMENTO ATIVO');
-  console.log(`   Rodando todo dia às ${CONFIG.horarioAutomatico}`);
-  console.log('   Deixe este terminal aberto. CTRL+C para parar.');
-  console.log('='.repeat(60));
-
-  while (true) {
-    const [hora, minuto] = CONFIG.horarioAutomatico.split(':').map(Number);
-    const agora = new Date();
-    const proxima = new Date();
-    proxima.setHours(hora, minuto, 0, 0);
-    if (proxima <= agora) proxima.setDate(proxima.getDate() + 1);
-
-    const ms = proxima - agora;
-    const h = Math.floor(ms / 1000 / 60 / 60);
-    const m = Math.floor((ms / 1000 / 60) % 60);
-    console.log(`\n   ⏳ Próxima execução: ${proxima.toLocaleString('pt-BR')} (em ${h}h ${m}min)`);
-
-    await new Promise(r => setTimeout(r, ms));
-    console.log('\n🔔 Iniciando agente automático...');
-    await executarAgente();
-  }
-}
-
-
-// ============================================================
 // 🔧 UTILITÁRIOS
 // ============================================================
 
@@ -553,16 +600,96 @@ function esperarEnter() {
 
 
 // ============================================================
-// ▶️  INÍCIO
+// 💬 INTERFACE DE COMANDOS NO TERMINAL
 // ============================================================
 
-async function main() {
+async function iniciarInterface() {
   inicializar();
-  if (process.argv.includes('--agendar')) {
-    await agendarExecucaoDiaria();
-  } else {
-    await executarAgente();
-  }
+
+  // Cabeçalho
+  console.log('\n' + '='.repeat(55));
+  console.log('   🤖 AGENTE TIKTOK SHOP v5.0');
+  console.log('   Gerador automático de vídeos com IA');
+  console.log('='.repeat(55));
+  console.log('   Digite "ajuda" para ver os comandos disponíveis.');
+  console.log('   Digite "analisar" para começar.\n');
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: '> ',
+  });
+
+  rl.prompt();
+
+  rl.on('line', async (linha) => {
+    const cmd = linha.trim().toLowerCase();
+    const partes = cmd.split(' ');
+    const comando = partes[0];
+    const argumento = partes[1];
+
+    try {
+      if (comando === 'analisar') {
+        await cmdAnalisar(argumento ? parseInt(argumento) : null);
+
+      } else if (comando === 'gerar') {
+        await cmdGerar(argumento ? parseInt(argumento) : null);
+
+      } else if (comando === 'status') {
+        cmdStatus();
+
+      } else if (comando === 'historico') {
+        cmdHistorico();
+
+      } else if (comando === 'relatorio') {
+        cmdRelatorio();
+
+      } else if (comando === 'agendar') {
+        cmdAgendar(argumento);
+
+      } else if (cmd === 'parar agendamento') {
+        if (ESTADO.agendamento) {
+          clearTimeout(ESTADO.agendamento);
+          ESTADO.agendamento = null;
+          console.log('\n   ✅ Agendamento cancelado.\n');
+        } else {
+          console.log('\n   ℹ️  Nenhum agendamento ativo.\n');
+        }
+
+      } else if (cmd === 'limpar historico') {
+        cmdLimparHistorico();
+
+      } else if (cmd === 'fechar navegador') {
+        await fecharNavegador();
+
+      } else if (comando === 'ajuda' || comando === 'help') {
+        cmdAjuda();
+
+      } else if (comando === 'sair' || comando === 'exit') {
+        console.log('\n   👋 Encerrando o agente...\n');
+        await fecharNavegador();
+        process.exit(0);
+
+      } else if (cmd === '') {
+        // Linha em branco — não faz nada
+
+      } else {
+        console.log(`\n   ❓ Comando não reconhecido: "${cmd}"`);
+        console.log('   Digite "ajuda" para ver os comandos disponíveis.\n');
+      }
+
+    } catch (e) {
+      console.error(`\n   ❌ Erro ao executar comando: ${e.message}\n`);
+    }
+
+    rl.prompt();
+  });
+
+  rl.on('close', async () => {
+    await fecharNavegador();
+    process.exit(0);
+  });
 }
 
-main().catch(console.error);
+// Inicia a interface
+iniciarInterface().catch(console.error);
