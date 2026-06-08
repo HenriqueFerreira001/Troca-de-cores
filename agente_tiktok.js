@@ -1,30 +1,31 @@
 /**
  * =============================================================
- *   AGENTE DE VENDAS TIKTOK SHOP COM IA — Versão 3.0
+ *   AGENTE DE VENDAS TIKTOK SHOP COM IA — Versão 4.0
  * =============================================================
  *
  * 🎯 COMO FUNCIONA:
  *
- *   VOCÊ FAZ (30 segundos por dia):
- *   → Abre o Kalodata ou Kalowave no seu navegador
- *   → Copia os nomes dos produtos que quer divulgar
- *   → Cola no arquivo "produtos.txt" (um produto por linha)
+ *   VOCÊ FAZ (1 clique):
+ *   → Quando o Kalodata abrir, clica em "Confirme que é humano"
+ *   → Pressiona ENTER no terminal
+ *   → Pronto! O agente faz o resto sozinho.
  *
  *   O AGENTE FAZ SOZINHO:
- *   ✅ Lê os produtos do arquivo produtos.txt
+ *   ✅ Abre o Kalodata automaticamente
+ *   ✅ Aguarda você passar o Cloudflare (1 clique)
+ *   ✅ Analisa a página e pega os 7 melhores produtos
  *   ✅ Gera um vídeo TikTok para cada produto no Gemini
  *   ✅ Nunca repete produto (histórico de 30 dias)
  *   ✅ Salva print de cada vídeo gerado
- *   ✅ Gera relatório do dia em texto
+ *   ✅ Gera relatório do dia
  *   ✅ Notifica no Telegram quando terminar
- *   ✅ Pode rodar automaticamente todo dia no horário que você definir
+ *   ✅ Pode rodar todo dia automaticamente
  *
  * ▶️  COMO RODAR:
- *   Rodar uma vez agora:
- *     node agente_tiktok.js
+ *   node agente_tiktok.js
  *
- *   Rodar todo dia automaticamente (deixe o PC ligado):
- *     node agente_tiktok.js --agendar
+ *   Todo dia automaticamente:
+ *   node agente_tiktok.js --agendar
  *
  * =============================================================
  */
@@ -33,18 +34,16 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const readline = require('readline');
 
 
 // ============================================================
-// ⚙️  CONFIGURAÇÕES — EDITE AQUI CONFORME SUA NECESSIDADE
+// ⚙️  CONFIGURAÇÕES
 // ============================================================
 
 const CONFIG = {
 
-  // Quantos vídeos gerar por execução
-  // O agente vai pegar esse número de produtos do arquivo produtos.txt
-  quantidadeDeVideos: 3,
+  // Quantos produtos buscar e quantos vídeos gerar por execução
+  quantidadeDeVideos: 7,
 
   // Horário para rodar automaticamente todo dia (formato 24h)
   horarioAutomatico: '09:00',
@@ -53,19 +52,16 @@ const CONFIG = {
   tempoMaximoPorVideo: 180000,
 
   // Notificações no Telegram (opcional)
-  // Veja como configurar no final do arquivo
   telegramToken: '',
   telegramChatId: '',
 
   // Arquivos e pastas do agente
   arquivos: {
-    produtos: './produtos.txt',       // ← VOCÊ EDITA ESSE ARQUIVO
     historico: './historico.json',
     perfil: './perfil_navegador',
     relatorios: './relatorios',
     screenshots: './screenshots',
   }
-
 };
 
 
@@ -74,69 +70,17 @@ const CONFIG = {
 // ============================================================
 
 function inicializar() {
-  // Cria pastas necessárias
   for (const pasta of [CONFIG.arquivos.perfil, CONFIG.arquivos.relatorios, CONFIG.arquivos.screenshots]) {
-    if (!fs.existsSync(pasta)) {
-      fs.mkdirSync(pasta, { recursive: true });
-    }
+    if (!fs.existsSync(pasta)) fs.mkdirSync(pasta, { recursive: true });
   }
-
-  // Cria histórico se não existir
   if (!fs.existsSync(CONFIG.arquivos.historico)) {
     salvarHistorico({ produtos: [], totalVideos: 0, ultimaExecucao: null });
   }
-
-  // Cria o arquivo produtos.txt com instruções se não existir
-  if (!fs.existsSync(CONFIG.arquivos.produtos)) {
-    fs.writeFileSync(CONFIG.arquivos.produtos, `# ARQUIVO DE PRODUTOS — AGENTE TIKTOK SHOP
-# ============================================
-# INSTRUÇÕES:
-#   1. Acesse kalodata.com ou kalowave.com no seu navegador
-#   2. Filtre por Roupas Femininas / Últimos 7 dias
-#   3. Copie os nomes dos produtos mais vendidos
-#   4. Cole abaixo (um produto por linha)
-#   5. Salve o arquivo e rode o agente
-#
-# DICA: Quanto mais detalhada a descrição, melhor o vídeo!
-# Exemplo: Vestido midi floral com manga bufante e decote V, cor rose
-#
-# Linhas começando com # são ignoradas pelo agente.
-# ============================================
-
-# Cole seus produtos abaixo:
-`);
-    console.log('   📝 Arquivo produtos.txt criado! Adicione seus produtos nele.');
-  }
 }
 
 
 // ============================================================
-// 📋 LEITURA DO ARQUIVO PRODUTOS.TXT
-// ============================================================
-
-function lerProdutos() {
-  const conteudo = fs.readFileSync(CONFIG.arquivos.produtos, 'utf8');
-
-  // Lê linha por linha, ignora comentários e linhas vazias
-  const produtos = conteudo
-    .split('\n')
-    .map(linha => linha.trim())
-    .filter(linha => linha.length > 0 && !linha.startsWith('#'));
-
-  return produtos;
-}
-
-function removerProdutoUsado(nomeProduto) {
-  // Remove o produto do arquivo depois de usar, para não repetir
-  const conteudo = fs.readFileSync(CONFIG.arquivos.produtos, 'utf8');
-  const linhas = conteudo.split('\n');
-  const novasLinhas = linhas.filter(linha => linha.trim() !== nomeProduto);
-  fs.writeFileSync(CONFIG.arquivos.produtos, novasLinhas.join('\n'));
-}
-
-
-// ============================================================
-// 📋 HISTÓRICO
+// 📋 HISTÓRICO — evita repetir produtos
 // ============================================================
 
 function carregarHistorico() {
@@ -147,12 +91,16 @@ function salvarHistorico(historico) {
   fs.writeFileSync(CONFIG.arquivos.historico, JSON.stringify(historico, null, 2));
 }
 
-function registrarNoHistorico(historico, nomeProduto, videoGerado) {
-  historico.produtos.push({
-    nome: nomeProduto,
-    data: new Date().toISOString(),
-    videoGerado,
-  });
+function produtoJaUsado(historico, nome) {
+  const trintaDias = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  return historico.produtos.some(p =>
+    p.nome.toLowerCase() === nome.toLowerCase() &&
+    new Date(p.data).getTime() > trintaDias
+  );
+}
+
+function registrarNoHistorico(historico, nome, videoGerado) {
+  historico.produtos.push({ nome, data: new Date().toISOString(), videoGerado });
   if (videoGerado) historico.totalVideos++;
   historico.ultimaExecucao = new Date().toISOString();
   salvarHistorico(historico);
@@ -167,46 +115,38 @@ function salvarRelatorio(relatorio) {
   relatorio.fim = new Date().toISOString();
   const data = new Date().toISOString().split('T')[0];
   const duracao = Math.floor((new Date(relatorio.fim) - new Date(relatorio.inicio)) / 1000 / 60);
-
   const texto = `
 ==========================================
-  RELATÓRIO DO AGENTE TIKTOK SHOP
-  Data: ${data}
-  Duração: ${duracao} minutos
+  RELATÓRIO — AGENTE TIKTOK SHOP
+  Data: ${data} | Duração: ${duracao} min
 ==========================================
-
 Vídeos gerados: ${relatorio.totalGerados}
 Falhas: ${relatorio.totalErros}
 
 PRODUTOS:
 ${relatorio.produtos.map((p, i) =>
-  `  ${i + 1}. ${p.nome}\n     ${p.videoGerado ? '✅ Vídeo gerado' : '❌ Falhou'} — ${p.horario}`
+  `  ${i + 1}. ${p.nome}\n     ${p.videoGerado ? '✅ Gerado' : '❌ Falhou'} — ${p.horario}`
 ).join('\n')}
-
 ==========================================
 `;
-  const nomeArquivo = path.join(CONFIG.arquivos.relatorios, `relatorio_${data}.txt`);
-  fs.writeFileSync(nomeArquivo, texto);
-  console.log(`   📊 Relatório salvo: ${nomeArquivo}`);
+  const arquivo = path.join(CONFIG.arquivos.relatorios, `relatorio_${data}.txt`);
+  fs.writeFileSync(arquivo, texto);
+  console.log(`   📊 Relatório salvo: ${arquivo}`);
 }
 
 
 // ============================================================
-// 📱 NOTIFICAÇÃO TELEGRAM
+// 📱 TELEGRAM
 // ============================================================
 
 async function notificarTelegram(mensagem) {
   if (!CONFIG.telegramToken || !CONFIG.telegramChatId) return;
-
   const corpo = JSON.stringify({ chat_id: CONFIG.telegramChatId, text: mensagem, parse_mode: 'HTML' });
   return new Promise(resolve => {
     const req = https.request(`https://api.telegram.org/bot${CONFIG.telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(corpo) },
-    }, res => {
-      if (res.statusCode === 200) console.log('   📱 Notificação Telegram enviada!');
-      resolve();
-    });
+    }, () => resolve());
     req.on('error', () => resolve());
     req.write(corpo);
     req.end();
@@ -215,29 +155,179 @@ async function notificarTelegram(mensagem) {
 
 
 // ============================================================
-// 🤖 GERAR VÍDEO NO GEMINI
+// 🛍️  ETAPA 1: BUSCAR PRODUTOS NO KALODATA
+// ============================================================
+
+async function buscarProdutosKalodata(contexto, historico) {
+  console.log('\n📦 Abrindo o Kalodata para buscar os melhores produtos...');
+
+  const pagina = await contexto.newPage();
+
+  // Abre o Kalodata
+  try {
+    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'load', timeout: 60000 });
+  } catch {
+    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  }
+
+  await pagina.waitForTimeout(3000);
+
+  // ---- AGUARDA O USUÁRIO PASSAR O CLOUDFLARE ----
+  console.log('\n' + '='.repeat(60));
+  console.log('   🔐 AÇÃO NECESSÁRIA — 1 clique só!');
+  console.log('='.repeat(60));
+  console.log('   👉 No navegador que abriu:');
+  console.log('      1. Clique em "Confirme que é humano" se aparecer');
+  console.log('      2. Espere a lista de produtos do Kalodata carregar');
+  console.log('      3. Volte aqui e pressione ENTER para continuar');
+  console.log('='.repeat(60));
+  await esperarEnter();
+
+  // Aguarda a página estabilizar após o ENTER
+  await pagina.waitForTimeout(2000);
+
+  // ---- TENTA APLICAR FILTROS AUTOMATICAMENTE ----
+  console.log('\n   🔧 Tentando aplicar filtros automaticamente...');
+
+  // Filtro de data: últimos 7 dias
+  try {
+    const filtroData = pagina.locator('text=Last 7 days, text=7 days, text=Últimos 7').first();
+    await filtroData.click({ timeout: 5000 });
+    await pagina.waitForTimeout(1500);
+    console.log('   ✅ Filtro de data aplicado.');
+  } catch {
+    console.log('   ℹ️  Filtro de data não encontrado — continuando sem ele.');
+  }
+
+  // Filtro de categoria: roupas femininas
+  try {
+    const btnCategoria = pagina.locator('text=Category, text=Categoria').first();
+    await btnCategoria.click({ timeout: 5000 });
+    await pagina.waitForTimeout(1500);
+
+    const opcaoRoupa = pagina.locator('text=Womenswear, text=Women, text=Roupas').first();
+    await opcaoRoupa.click({ timeout: 5000 });
+    await pagina.waitForTimeout(1000);
+
+    const btnAplicar = pagina.locator('text=Apply, text=Aplicar').first();
+    await btnAplicar.click({ timeout: 5000 });
+    await pagina.waitForTimeout(3000);
+    console.log('   ✅ Filtro de categoria aplicado.');
+  } catch {
+    console.log('   ℹ️  Filtro de categoria não aplicado automaticamente.');
+  }
+
+  // ---- COLETA OS PRODUTOS DA PÁGINA ----
+  console.log('   🔍 Analisando a página e coletando os melhores produtos...');
+  await pagina.waitForTimeout(2000);
+
+  // Palavras que indicam texto de interface (não produto)
+  const textosDaInterface = [
+    'verificando', 'cloudflare', 'verificação', 'checking', 'moment',
+    'tendência', 'taxa', 'receita', 'revenue', 'growth', 'sold', 'rank',
+    'category', 'date', 'filter', 'search', 'sort', 'price', 'commission',
+    'items', 'product', 'brand', 'shop', 'video', 'creator', 'últimos',
+    'loading', 'carregando', 'aplicar', 'apply', 'reset'
+  ];
+
+  function isProdutoValido(texto) {
+    const t = texto.toLowerCase().trim();
+    if (t.length < 10 || t.length > 300) return false;
+    if (textosDaInterface.some(p => t === p || t.startsWith(p + ' ') || t.endsWith(' ' + p))) return false;
+    if (/^\d+([.,]\d+)?(%|k|m)?$/.test(t)) return false; // ignora números puros
+    return true;
+  }
+
+  // Tenta vários seletores específicos do Kalodata para pegar nomes de produtos
+  let produtos = await pagina.evaluate(() => {
+    const seletores = [
+      '[class*="product-name"]',
+      '[class*="productName"]',
+      '[class*="product_name"]',
+      '[class*="item-name"]',
+      '[class*="itemName"]',
+      '[class*="goods-name"]',
+      '[class*="goodsName"]',
+      'td:nth-child(2) a',
+      'td:nth-child(2) span',
+      '.ant-table-cell:nth-child(2)',
+    ];
+
+    for (const seletor of seletores) {
+      const els = document.querySelectorAll(seletor);
+      if (els.length >= 3) {
+        const textos = Array.from(els).map(el => el.textContent.trim()).filter(t => t.length > 5);
+        if (textos.length >= 3) return textos.slice(0, 20);
+      }
+    }
+
+    // Fallback: pega todos os links da tabela
+    const links = document.querySelectorAll('table a, .table a');
+    if (links.length > 0) {
+      return Array.from(links).map(el => el.textContent.trim()).filter(t => t.length > 5).slice(0, 20);
+    }
+
+    return [];
+  });
+
+  // Filtra textos inválidos
+  produtos = produtos.filter(isProdutoValido);
+
+  // Se não encontrou nada automaticamente, pede ajuda
+  if (produtos.length === 0) {
+    console.log('\n   ⚠️  Não consegui detectar os produtos automaticamente.');
+    console.log('   👉 Role a página até ver a lista de produtos no navegador.');
+    console.log('   👉 Quando a lista estiver visível, pressione ENTER...');
+    await esperarEnter();
+
+    // Tenta novamente depois da instrução
+    produtos = await pagina.evaluate(() => {
+      const todos = document.querySelectorAll('td, [class*="name"], [class*="title"], a');
+      return Array.from(todos)
+        .map(el => el.textContent.trim())
+        .filter(t => t.length > 15 && t.length < 200)
+        .slice(0, 30);
+    });
+    produtos = produtos.filter(isProdutoValido);
+  }
+
+  // Remove produtos já usados recentemente
+  const produtosNovos = produtos.filter(p => !produtoJaUsado(historico, p));
+  const listafinal = (produtosNovos.length > 0 ? produtosNovos : produtos).slice(0, CONFIG.quantidadeDeVideos);
+
+  console.log(`\n   ✅ ${listafinal.length} produto(s) selecionado(s):`);
+  listafinal.forEach((p, i) => console.log(`      ${i + 1}. ${p.substring(0, 70)}`));
+
+  await pagina.close();
+  return listafinal;
+}
+
+
+// ============================================================
+// 🎬 ETAPA 2: GERAR VÍDEO NO GEMINI
 // ============================================================
 
 async function gerarVideo(contexto, produto, indice, total) {
   console.log(`\n${'─'.repeat(60)}`);
-  console.log(`🎬 Vídeo ${indice + 1} de ${total}: "${produto.substring(0, 55)}..."`);
+  console.log(`🎬 Gerando vídeo ${indice + 1} de ${total}`);
+  console.log(`   Produto: "${produto.substring(0, 60)}"`);
   console.log('─'.repeat(60));
 
   const pagina = await contexto.newPage();
 
   try {
-    // Abre o Gemini
     await pagina.goto('https://gemini.google.com', { waitUntil: 'load', timeout: 60000 });
     await pagina.waitForTimeout(4000);
 
-    // Verifica se está logado
+    // Verifica login
     const logado = await pagina.evaluate(() => {
-      return !document.body.innerText.toLowerCase().includes('fazer login') &&
-             !document.body.innerText.toLowerCase().includes('sign in');
+      const t = document.body.innerText.toLowerCase();
+      return !t.includes('fazer login') && !t.includes('sign in') && !t.includes('log in');
     });
 
     if (!logado) {
-      console.log('   ⚠️  Gemini pediu login. Faça login no navegador e pressione ENTER...');
+      console.log('   ⚠️  Gemini pediu login.');
+      console.log('   👉 Faça login no Google no navegador e pressione ENTER...');
       await esperarEnter();
     } else {
       console.log('   ✅ Logado no Gemini.');
@@ -270,6 +360,7 @@ async function gerarVideo(contexto, produto, indice, total) {
       await pagina.keyboard.press('Enter');
     }
     console.log('   🚀 Enviado! Aguardando geração do vídeo...');
+    console.log('   (Isso leva de 1 a 3 minutos — aguarde)');
 
     // Aguarda o vídeo
     const inicio = Date.now();
@@ -281,12 +372,16 @@ async function gerarVideo(contexto, produto, indice, total) {
 
       videoGerado = await pagina.evaluate(() => {
         const t = document.body.innerText.toLowerCase();
-        return t.includes('your video is ready') || t.includes('vídeo está pronto') ||
-               t.includes('video is ready') || document.querySelector('video') !== null;
+        return (
+          t.includes('your video is ready') ||
+          t.includes('vídeo está pronto') ||
+          t.includes('video is ready') ||
+          document.querySelector('video') !== null
+        );
       }).catch(() => false);
 
       if (videoGerado) {
-        console.log(`\n   🎉 Vídeo gerado em ${Math.floor((Date.now() - inicio) / 1000)}s!`);
+        console.log(`\n   🎉 Vídeo ${indice + 1} gerado com sucesso!`);
         break;
       }
       await pagina.waitForTimeout(5000);
@@ -297,14 +392,14 @@ async function gerarVideo(contexto, produto, indice, total) {
     }
 
     // Salva screenshot
-    const nomeArquivo = path.join(CONFIG.arquivos.screenshots, `video_${Date.now()}_${indice + 1}.png`);
-    await pagina.screenshot({ path: nomeArquivo, fullPage: true });
-    console.log(`   📸 Print salvo: ${nomeArquivo}`);
+    const arquivo = path.join(CONFIG.arquivos.screenshots, `video_${Date.now()}_${indice + 1}.png`);
+    await pagina.screenshot({ path: arquivo, fullPage: true });
+    console.log(`   📸 Print salvo: ${arquivo}`);
 
     return videoGerado;
 
   } catch (e) {
-    console.error(`   ❌ Erro: ${e.message}`);
+    console.error(`   ❌ Erro ao gerar vídeo: ${e.message}`);
     return false;
   } finally {
     await pagina.close();
@@ -313,7 +408,7 @@ async function gerarVideo(contexto, produto, indice, total) {
 
 
 // ============================================================
-// 🚀 EXECUÇÃO PRINCIPAL DO AGENTE
+// 🚀 EXECUÇÃO PRINCIPAL
 // ============================================================
 
 async function executarAgente() {
@@ -327,111 +422,82 @@ async function executarAgente() {
   };
 
   console.log('\n' + '='.repeat(60));
-  console.log(`   🤖 AGENTE TIKTOK SHOP — ${new Date().toLocaleString('pt-BR')}`);
+  console.log(`   🤖 AGENTE TIKTOK SHOP v4.0 — ${new Date().toLocaleString('pt-BR')}`);
   console.log('='.repeat(60));
+  console.log(`   Vídeos a gerar: ${CONFIG.quantidadeDeVideos}`);
+  console.log(`   Total histórico: ${historico.totalVideos} vídeos`);
 
-  // ---- Lê os produtos do arquivo ----
-  const todosProdutos = lerProdutos();
-
-  if (todosProdutos.length === 0) {
-    console.log('\n   ❌ Nenhum produto encontrado no arquivo produtos.txt!');
-    console.log('\n   👉 O que fazer:');
-    console.log('      1. Abra o arquivo produtos.txt na pasta do projeto');
-    console.log('      2. Cole os nomes dos produtos (um por linha)');
-    console.log('      3. Salve e rode o agente novamente\n');
-    console.log('   Exemplo de produto:');
-    console.log('   Vestido midi floral manga bufante decote V cor rose\n');
-    return;
-  }
-
-  // Pega a quantidade configurada de produtos
-  const produtosDoDia = todosProdutos.slice(0, CONFIG.quantidadeDeVideos);
-
-  console.log(`\n   📋 Produtos para hoje (${produtosDoDia.length}):`);
-  produtosDoDia.forEach((p, i) => console.log(`      ${i + 1}. ${p.substring(0, 60)}`));
-  console.log(`   📊 Total já gerado: ${historico.totalVideos} vídeos\n`);
-
-  // ---- Inicia o navegador ----
-  // Tenta usar o Edge instalado no Windows
+  // Inicia o Edge (ou Chromium se Edge não encontrado)
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
-
-  if (executablePath) {
-    console.log('   ✅ Usando Microsoft Edge.');
-  } else {
-    console.log('   ℹ️  Edge não encontrado — usando Chromium padrão.');
-  }
+  console.log(executablePath ? '\n   ✅ Usando Microsoft Edge.' : '\n   ℹ️  Usando Chromium.');
 
   const contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
     headless: false,
     executablePath,
-    args: [
-      '--start-maximized',
-      '--disable-blink-features=AutomationControlled',
-    ],
+    args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
     viewport: null,
   });
 
-  console.log('   ✅ Navegador iniciado.\n');
+  console.log('   ✅ Navegador iniciado.');
 
   try {
+    // ---- Busca produtos no Kalodata (com 1 clique seu) ----
+    const produtos = await buscarProdutosKalodata(contexto, historico);
+
+    if (produtos.length === 0) {
+      console.log('\n   ❌ Nenhum produto encontrado. Encerrando.');
+      return;
+    }
+
     // ---- Gera vídeo para cada produto ----
-    for (let i = 0; i < produtosDoDia.length; i++) {
-      const produto = produtosDoDia[i];
-      const videoGerado = await gerarVideo(contexto, produto, i, produtosDoDia.length);
+    for (let i = 0; i < produtos.length; i++) {
+      const produto = produtos[i];
+      const videoGerado = await gerarVideo(contexto, produto, i, produtos.length);
 
-      // Remove produto usado do arquivo para não repetir
-      removerProdutoUsado(produto);
-
-      // Registra no histórico
       registrarNoHistorico(historico, produto, videoGerado);
-
-      // Adiciona ao relatório
-      relatorio.produtos.push({ nome: produto, videoGerado, horario: new Date().toLocaleTimeString('pt-BR') });
+      relatorio.produtos.push({
+        nome: produto,
+        videoGerado,
+        horario: new Date().toLocaleTimeString('pt-BR'),
+      });
       if (videoGerado) relatorio.totalGerados++;
       else relatorio.totalErros++;
 
-      // Pausa entre vídeos
-      if (i < produtosDoDia.length - 1) {
-        console.log('\n   ⏸️  Aguardando 10 segundos antes do próximo...');
-        await new Promise(r => setTimeout(r, 10000));
+      // Pausa entre vídeos para não sobrecarregar o Gemini
+      if (i < produtos.length - 1) {
+        console.log('\n   ⏸️  Aguardando 15 segundos antes do próximo vídeo...');
+        await new Promise(r => setTimeout(r, 15000));
       }
     }
 
-    // ---- Salva relatório ----
+    // ---- Relatório e resumo ----
     salvarRelatorio(relatorio);
 
-    // ---- Resumo final ----
+    const historicofinal = carregarHistorico();
     console.log('\n' + '='.repeat(60));
     console.log('   🏁 AGENTE FINALIZADO!');
     console.log('='.repeat(60));
-    console.log(`   ✅ Vídeos gerados: ${relatorio.totalGerados}`);
+    console.log(`   ✅ Vídeos gerados hoje: ${relatorio.totalGerados}`);
     console.log(`   ❌ Falhas: ${relatorio.totalErros}`);
-    console.log(`   📊 Total histórico: ${historico.totalVideos} vídeos`);
-    console.log(`\n   👉 Baixe os vídeos no navegador e poste no TikTok Shop!`);
-
-    // Produtos restantes no arquivo
-    const restantes = lerProdutos();
-    if (restantes.length > 0) {
-      console.log(`\n   ℹ️  Ainda tem ${restantes.length} produto(s) no arquivo para a próxima execução.`);
-    } else {
-      console.log(`\n   ℹ️  Arquivo produtos.txt está vazio. Adicione novos produtos para amanhã!`);
-    }
+    console.log(`   📊 Total histórico: ${historicofinal.totalVideos} vídeos`);
+    console.log(`   📁 Screenshots: pasta /screenshots`);
+    console.log(`   📋 Relatório: pasta /relatorios`);
+    console.log('\n   👉 Baixe os vídeos no navegador e poste no TikTok Shop!');
     console.log('='.repeat(60));
 
-    // Notifica no Telegram
     await notificarTelegram(
       `🎬 <b>Agente TikTok Shop finalizado!</b>\n\n` +
-      `✅ Vídeos gerados: ${relatorio.totalGerados}\n` +
+      `✅ Gerados: ${relatorio.totalGerados}\n` +
       `❌ Falhas: ${relatorio.totalErros}\n` +
-      `📊 Total: ${historico.totalVideos} vídeos\n\n` +
+      `📊 Total: ${historicofinal.totalVideos} vídeos\n\n` +
       relatorio.produtos.map((p, i) =>
         `${i + 1}. ${p.nome.substring(0, 40)} ${p.videoGerado ? '✅' : '❌'}`
       ).join('\n')
     );
 
-    console.log('\n   🌐 Navegador aberto — baixe os vídeos e pressione CTRL+C quando terminar.\n');
+    console.log('\n   🌐 Navegador aberto — baixe os vídeos e pressione CTRL+C.\n');
     await new Promise(() => {});
 
   } catch (e) {
@@ -445,7 +511,7 @@ async function executarAgente() {
 
 
 // ============================================================
-// ⏰ AGENDAMENTO AUTOMÁTICO DIÁRIO
+// ⏰ AGENDAMENTO AUTOMÁTICO
 // ============================================================
 
 async function agendarExecucaoDiaria() {
@@ -465,10 +531,9 @@ async function agendarExecucaoDiaria() {
     const ms = proxima - agora;
     const h = Math.floor(ms / 1000 / 60 / 60);
     const m = Math.floor((ms / 1000 / 60) % 60);
-
     console.log(`\n   ⏳ Próxima execução: ${proxima.toLocaleString('pt-BR')} (em ${h}h ${m}min)`);
-    await new Promise(r => setTimeout(r, ms));
 
+    await new Promise(r => setTimeout(r, ms));
     console.log('\n🔔 Iniciando agente automático...');
     await executarAgente();
   }
@@ -493,7 +558,6 @@ function esperarEnter() {
 
 async function main() {
   inicializar();
-
   if (process.argv.includes('--agendar')) {
     await agendarExecucaoDiaria();
   } else {
@@ -502,16 +566,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
-
-/*
- * =============================================================
- * 📱 COMO CONFIGURAR NOTIFICAÇÕES NO TELEGRAM:
- * =============================================================
- * 1. Abra o Telegram e procure @BotFather
- * 2. Digite /newbot e siga os passos para criar seu bot
- * 3. Copie o TOKEN gerado e cole em CONFIG.telegramToken
- * 4. Procure @userinfobot no Telegram, envie /start
- * 5. Copie seu CHAT ID e cole em CONFIG.telegramChatId
- * =============================================================
- */
