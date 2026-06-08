@@ -326,31 +326,90 @@ async function buscarProdutosKalodata(pagina, quantidade, historico) {
   }
 
   // ---- Coleta a lista de produtos ----
-  console.log('   🔍 Coletando lista de produtos...');
+  // Palavras que indicam que é texto da interface, não produto real
+  const textosDaInterface = [
+    'verificando', 'cloudflare', 'verificação', 'checking', 'moment',
+    'tendência', 'taxa de crescimento', 'itens vendidos', 'receita',
+    'revenue', 'growth', 'items sold', 'rank', 'category', 'date',
+    'filter', 'search', 'sort', 'price', 'commission'
+  ];
 
-  // Pega todos os elementos de produto visíveis na página
-  const todosProdutos = await pagina.evaluate(() => {
-    const elementos = document.querySelectorAll(
-      '[class*="product-name"], [class*="product-title"], h3, h2'
-    );
-    return Array.from(elementos)
-      .map(el => el.textContent.trim())
-      .filter(texto => texto.length > 10) // Filtra textos muito curtos
-      .slice(0, 20); // Pega os primeiros 20
+  function isProdutoValido(texto) {
+    const t = texto.toLowerCase();
+    // Ignora textos da interface do site
+    if (textosDaInterface.some(palavra => t.includes(palavra))) return false;
+    // Ignora textos muito curtos ou muito longos
+    if (texto.length < 15 || texto.length > 200) return false;
+    return true;
+  }
+
+  console.log('   🔍 Analisando a página para encontrar produtos...');
+
+  // Tenta coletar produtos automaticamente com vários seletores
+  let todosProdutos = await pagina.evaluate(() => {
+    // Seletores específicos do Kalodata
+    const seletores = [
+      '[class*="product-name"]',
+      '[class*="productName"]',
+      '[class*="product-title"]',
+      '[class*="item-name"]',
+      'td [class*="name"]',
+      'table td:nth-child(2)',
+    ];
+    for (const seletor of seletores) {
+      const els = document.querySelectorAll(seletor);
+      if (els.length > 2) {
+        return Array.from(els).map(el => el.textContent.trim()).slice(0, 20);
+      }
+    }
+    return [];
   });
 
+  // Filtra textos inválidos
+  todosProdutos = todosProdutos.filter(isProdutoValido);
+
+  // Se ainda não encontrou, pausa e pede intervenção manual
   if (todosProdutos.length === 0) {
-    console.log('   ⚠️  Não encontrei produtos automaticamente.');
-    console.log('   ℹ️  Por favor, aplique os filtros manualmente no navegador.');
-    console.log('   ℹ️  Depois pressione ENTER para continuar...');
+    console.log('   ⚠️  Não encontrei produtos — o Kalodata pode precisar de login ou filtros.');
+    console.log('\n   👉 No navegador que abriu:');
+    console.log('      1. Faça login no Kalodata se pedir');
+    console.log('      2. Clique em "Date" → "Last 7 days"');
+    console.log('      3. Clique em "Category" → "Womenswear" → "Apply"');
+    console.log('      4. Aguarde a lista de produtos aparecer na tela');
+    console.log('      5. Só então pressione ENTER aqui\n');
     await esperarEnter();
 
-    // Tenta novamente após intervenção manual
-    const produtosAposManual = await pagina.evaluate(() => {
-      const elementos = document.querySelectorAll('h2, h3, [class*="title"]');
-      return Array.from(elementos).map(el => el.textContent.trim()).filter(t => t.length > 10).slice(0, 20);
+    // Tenta novamente após intervenção manual com seletores mais amplos
+    todosProdutos = await pagina.evaluate(() => {
+      const seletores = [
+        '[class*="product-name"]', '[class*="productName"]',
+        '[class*="product-title"]', '[class*="item-name"]',
+        'td [class*="name"]', 'table td:nth-child(2)',
+        'a[href*="product"]',
+      ];
+      for (const seletor of seletores) {
+        const els = document.querySelectorAll(seletor);
+        if (els.length > 2) {
+          return Array.from(els).map(el => el.textContent.trim()).slice(0, 20);
+        }
+      }
+      return [];
     });
-    todosProdutos.push(...produtosAposManual);
+    todosProdutos = todosProdutos.filter(isProdutoValido);
+
+    // Último recurso: pede para o usuário digitar o produto manualmente
+    if (todosProdutos.length === 0) {
+      console.log('   ⚠️  Ainda não encontrei produtos automaticamente.');
+      console.log('   👉 Copie o nome de um produto do Kalodata e cole aqui:');
+      const nomeProduto = await new Promise(resolve => {
+        process.stdin.resume();
+        process.stdin.once('data', data => {
+          process.stdin.pause();
+          resolve(data.toString().trim());
+        });
+      });
+      todosProdutos.push(nomeProduto);
+    }
   }
 
   // ---- Filtra produtos que já foram usados ----
@@ -544,25 +603,64 @@ async function executarAgente() {
   console.log(`   Vídeos a gerar hoje: ${CONFIG.quantidadeDeVideos}`);
   console.log(`   Total gerado até hoje: ${historico.totalVideos} vídeos\n`);
 
-  // Tenta usar o Chrome real instalado no Windows
-  // Isso é importante para o Google aceitar o login
+  // Caminhos possíveis do Edge no Windows
+  const caminhosEdge = [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+
+  // Caminhos possíveis do Chrome no Windows
   const caminhosChromeWindows = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     (process.env.LOCALAPPDATA || '') + '\\Google\\Chrome\\Application\\chrome.exe',
   ];
 
+  // Tenta encontrar Edge primeiro, depois Chrome
   let executablePath = undefined;
-  for (const caminho of caminhosChromeWindows) {
+  for (const caminho of [...caminhosEdge, ...caminhosChromeWindows]) {
     if (fs.existsSync(caminho)) {
       executablePath = caminho;
-      console.log(`   ✅ Chrome encontrado: ${caminho}`);
+      console.log(`   ✅ Navegador encontrado: ${caminho}`);
       break;
     }
   }
 
   if (!executablePath) {
-    console.log('   ⚠️  Chrome não encontrado — usando Chromium padrão.');
+    console.log('   ⚠️  Edge/Chrome não encontrado — usando Chromium padrão.');
+  }
+
+  // ---- USA A SESSÃO SALVA DO SEU EDGE ----
+  // Copia os cookies do seu Edge real para o perfil do agente
+  // Assim o agente já entra logado no Kalodata e no Google automaticamente
+  const perfilEdge = path.join(
+    process.env.LOCALAPPDATA || '',
+    'Microsoft\\Edge\\User Data'
+  );
+
+  // Se o perfil do agente ainda não existe, cria a partir do Edge real
+  if (!fs.existsSync(CONFIG.pastasDados.perfil) ||
+      fs.readdirSync(CONFIG.pastasDados.perfil).length === 0) {
+    console.log('   📋 Primeira execução — copiando sessão do Edge...');
+    try {
+      // Copia apenas os arquivos de cookies/login (não o perfil inteiro para ser rápido)
+      const arquivosParaCopiar = ['Cookies', 'Login Data', 'Web Data', 'Preferences'];
+      const origemDefault = path.join(perfilEdge, 'Default');
+      const destino = path.join(CONFIG.pastasDados.perfil, 'Default');
+
+      if (!fs.existsSync(destino)) fs.mkdirSync(destino, { recursive: true });
+
+      for (const arquivo of arquivosParaCopiar) {
+        const origem = path.join(origemDefault, arquivo);
+        if (fs.existsSync(origem)) {
+          fs.copyFileSync(origem, path.join(destino, arquivo));
+        }
+      }
+      console.log('   ✅ Sessão do Edge copiada com sucesso!');
+    } catch (e) {
+      console.log(`   ⚠️  Não foi possível copiar sessão: ${e.message}`);
+      console.log('   ℹ️  Você precisará fazer login manualmente na primeira vez.');
+    }
   }
 
   // Inicia o navegador com perfil salvo
