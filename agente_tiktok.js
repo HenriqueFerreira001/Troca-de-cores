@@ -117,7 +117,12 @@ async function abrirNavegador() {
   ESTADO.contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
     headless: false,
     executablePath,
-    args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
+    args: [
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+      '--window-position=0,0',   // Abre sempre na tela principal (canto superior esquerdo)
+      '--window-size=1920,1080', // Tamanho padrão
+    ],
     ignoreDefaultArgs: ['--enable-automation'],
     viewport: null,
   });
