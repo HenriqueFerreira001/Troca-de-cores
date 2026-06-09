@@ -195,14 +195,31 @@ async function cmdAnalisar(quantidade) {
     'seller', 'vendedor', 'followers', 'seguidores'
   ];
 
-  // Palavras que indicam roupa feminina — filtra produtos irrelevantes
+  // Palavras que confirmam roupa FEMININA
   const palavrasRoupas = [
-    'vestido', 'blusa', 'calça', 'saia', 'conjunto', 'jaqueta', 'casaco',
-    'moletom', 'cropped', 'top', 'legging', 'short', 'bermuda', 'macacão',
-    'camiseta', 'camisa', 'regata', 'body', 'kimono', 'cardigan', 'suéter',
-    'tricot', 'malha', 'feminina', 'feminino', 'mulher', 'woman', 'dress',
-    'pants', 'jacket', 'blouse', 'skirt', 'coat', 'sweater', 'lingerie',
-    'pijama', 'blusão', 'sobretudo', 'trench', 'blazer', 'colete'
+    'vestido', 'blusa', 'saia', 'cropped', 'legging', 'macacão',
+    'lingerie', 'kimono', 'cardigan', 'feminina', 'feminino', 'mulher',
+    'woman', 'dress', 'blouse', 'skirt', 'calça feminina', 'calça larga feminina',
+    'calça flare feminina', 'jaqueta feminina', 'casaco feminino',
+    'moletom feminino', 'conjunto feminino', 'camiseta feminina',
+    'camisa feminina', 'regata feminina', 'short feminino', 'bermuda feminina',
+    'body feminino', 'tricot', 'blazer feminino', 'colete feminino'
+  ];
+
+  // Palavras que indicam roupa MASCULINA — produtos ignorados
+  const palavrasMasculinas = [
+    'masculina', 'masculino', 'homem', ' men ', 'male', 'terno',
+    'gravata', 'masculino', 'sarja masculina', 'camisa masculina',
+    'camiseta masculina', 'calça masculina', 'jaqueta masculina',
+    'casaco masculino', 'moletom masculino', 'bermuda masculina',
+    'polo masculina', 'paletó', 'kit 2 calça'
+  ];
+
+  // Produtos que não são roupa (ignorados)
+  const naoERoupa = [
+    'bicicleta', 'spinning', 'ergométrica', 'figurinha', 'envelope',
+    'monitor', 'suplemento', 'proteína', 'mochila', 'tênis', 'sapato',
+    'bolsa', 'calçado', 'perfume', 'cosmético', 'eletrônico', 'celular'
   ];
 
   function isProdutoValido(texto) {
@@ -215,6 +232,10 @@ async function cmdAnalisar(quantidade) {
 
   function isProdutoRoupa(texto) {
     const t = texto.toLowerCase();
+    // Rejeita masculino e não-roupa
+    if (palavrasMasculinas.some(p => t.includes(p))) return false;
+    if (naoERoupa.some(p => t.includes(p))) return false;
+    // Aceita se tiver palavra feminina
     return palavrasRoupas.some(p => t.includes(p));
   }
 
@@ -443,7 +464,7 @@ function montarPrompt(produto) {
     `She takes a small step toward the mirror with a light body sway to show how the clothing drapes ` +
     `and moves, then slowly turns to a side profile showing the silhouette of the outfit in the mirror. ` +
     `Relaxed, natural posture. Authentic TikTok fitting room style, UGC handheld creator style, ` +
-    `natural lighting. Audio: ${audio}, no speech, no music.`
+    `natural lighting. IMPORTANT: completely silent video — absolutely no talking, no speaking, no words, no voice, no music, no singing. Audio only: ${audio}.`
   );
 }
 
