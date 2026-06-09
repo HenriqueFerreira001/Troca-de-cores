@@ -114,14 +114,25 @@ async function abrirNavegador() {
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
 
+  // Tenta conectar no Edge que já está aberto (porta 9222)
+  // Se não conseguir, abre um Edge novo normalmente
+  try {
+    ESTADO.contexto = await chromium.connectOverCDP('http://localhost:9222');
+    console.log('   ✅ Conectado ao Edge que já está aberto!');
+    ESTADO.navegadorAberto = true;
+    return;
+  } catch {
+    console.log('   ℹ️  Abrindo novo Edge...');
+  }
+
   ESTADO.contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
     headless: false,
     executablePath,
     args: [
       '--start-maximized',
       '--disable-blink-features=AutomationControlled',
-      '--window-position=0,0',   // Abre sempre na tela principal (canto superior esquerdo)
-      '--window-size=1920,1080', // Tamanho padrão
+      '--window-position=0,0',
+      '--window-size=1920,1080',
     ],
     ignoreDefaultArgs: ['--enable-automation'],
     viewport: null,
