@@ -461,70 +461,131 @@ async function gerarVideoGemini(produto, numero) {
 function montarPrompt(produto) {
   const p = produto.toLowerCase();
 
-  // Define o estilo de cena conforme o tipo de roupa
+  // ---- DETECTA SE É PRODUTO MASCULINO OU FEMININO ----
+  const eMasculino = [
+    'masculino', 'masculina', 'homem', 'men', 'male', 'terno',
+    'gravata', 'paletó', 'camisa masculina', 'calça masculina'
+  ].some(w => p.includes(w));
+
+  // ============================================================
+  // MODELO FEMININO — sempre igual em todos os vídeos femininos
+  // Cabelo loiro e liso, branca, olhos claros, corpo mediano
+  // ============================================================
+  const descricaoModeloFeminino =
+    `a young Brazilian woman with straight blonde hair, light eyes, ` +
+    `fair skin and a medium body build (not too thin, not too curvy — natural and healthy)`;
+
+  // ============================================================
+  // MODELO MASCULINO — sempre igual em todos os vídeos masculinos
+  // Cabelo preto curto cortado, branco, barba feita, corpo mediano
+  // ============================================================
+  const descricaoModeloMasculino =
+    `a young Brazilian man with short black hair, fair skin, clean-shaven face, ` +
+    `and an average athletic body build (not too muscular, not too slim — natural and fit)`;
+
+  const modelo = eMasculino ? descricaoModeloMasculino : descricaoModeloFeminino;
+
+  // ---- ESTILO DE CENA CONFORME TIPO DE ROUPA ----
   let estilo = 'mirror selfie in a cozy bedroom';
   let acaoExtra = 'adjusts the outfit slightly and smiles naturally at the mirror';
 
-  if (p.includes('vestido') || p.includes('dress')) {
-    estilo = 'mirror selfie in a bright bedroom, twirling once to show the dress flow';
-    acaoExtra = 'spins once showing the full skirt movement, then stops and smiles';
-  } else if (p.includes('calça') || p.includes('legging') || p.includes('pants')) {
-    estilo = 'mirror selfie showing full body, running hands along the sides to show the fit';
-    acaoExtra = 'turns sideways to show the silhouette, then faces forward again';
-  } else if (p.includes('blusa') || p.includes('camiseta') || p.includes('top') || p.includes('cropped')) {
-    estilo = 'mirror selfie in a bedroom, showing the fit of the top';
-    acaoExtra = 'tucks and untucks the top slightly, showing how it fits';
-  } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
-    estilo = 'mirror selfie opening and closing the jacket to show the full look';
-    acaoExtra = 'opens the jacket wide then closes it, turning sideways';
-  } else if (p.includes('saia') || p.includes('skirt')) {
-    estilo = 'mirror selfie showing the skirt movement with a light sway';
-    acaoExtra = 'sways hips gently to show how the skirt moves';
+  if (!eMasculino) {
+    // Cenas femininas
+    if (p.includes('vestido') || p.includes('dress')) {
+      estilo = 'mirror selfie in a bright bedroom, twirling once to show the dress flow';
+      acaoExtra = 'spins once showing the full skirt movement, then stops and smiles';
+    } else if (p.includes('calça') || p.includes('legging') || p.includes('pants')) {
+      estilo = 'mirror selfie showing full body, running hands along the sides to show the fit';
+      acaoExtra = 'turns sideways to show the silhouette, then faces forward again';
+    } else if (p.includes('blusa') || p.includes('camiseta') || p.includes('top') || p.includes('cropped')) {
+      estilo = 'mirror selfie in a bedroom, showing the fit of the top';
+      acaoExtra = 'tucks and untucks the top slightly, showing how it fits';
+    } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
+      estilo = 'mirror selfie opening and closing the jacket to show the full look';
+      acaoExtra = 'opens the jacket wide then closes it, turning sideways';
+    } else if (p.includes('saia') || p.includes('skirt')) {
+      estilo = 'mirror selfie showing the skirt movement with a light sway';
+      acaoExtra = 'sways hips gently to show how the skirt moves';
+    }
+  } else {
+    // Cenas masculinas
+    if (p.includes('calça') || p.includes('pants')) {
+      estilo = 'mirror selfie showing full body, hands in pockets showing the fit';
+      acaoExtra = 'turns sideways to show the silhouette, then faces forward';
+    } else if (p.includes('camisa') || p.includes('camiseta') || p.includes('shirt')) {
+      estilo = 'mirror selfie showing upper body, adjusting the collar or hem';
+      acaoExtra = 'buttons or adjusts the shirt slightly, nods approvingly';
+    } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
+      estilo = 'mirror selfie opening and closing the jacket confidently';
+      acaoExtra = 'opens the jacket wide, then closes it and turns sideways';
+    }
   }
 
-  // Frase POV que aparece como texto na tela — contexto do produto
-  let textoPOV = 'POV: found the perfect outfit and now I can\'t stop wearing it';
-  if (p.includes('vestido')) textoPOV = 'POV: found a dress so perfect I bought it in 3 colors';
-  else if (p.includes('calça') || p.includes('legging')) textoPOV = 'POV: these pants make every outfit look expensive';
-  else if (p.includes('blusa') || p.includes('camiseta')) textoPOV = 'POV: this top goes with literally everything in my closet';
-  else if (p.includes('jaqueta') || p.includes('casaco')) textoPOV = 'POV: this jacket completes every single look';
-  else if (p.includes('saia')) textoPOV = 'POV: found a skirt that makes me feel like the main character';
-  else if (p.includes('cropped')) textoPOV = 'POV: this cropped top is all I\'ve been wearing lately';
-  else if (p.includes('conjunto')) textoPOV = 'POV: bought a matching set and now I feel unstoppable';
+  // ---- TEXTO POV NA TELA ----
+  let textoPOV = '';
+  if (!eMasculino) {
+    if (p.includes('vestido')) textoPOV = 'POV: achei o vestido perfeito e não largo mais 😍';
+    else if (p.includes('calça') || p.includes('legging')) textoPOV = 'POV: essa calça valoriza demais o corpo 🔥';
+    else if (p.includes('blusa') || p.includes('camiseta')) textoPOV = 'POV: essa blusa combina com tudo no meu guarda-roupa ✨';
+    else if (p.includes('jaqueta') || p.includes('casaco')) textoPOV = 'POV: essa jaqueta completa qualquer look 🧥';
+    else if (p.includes('saia')) textoPOV = 'POV: me sinto a personagem principal com essa saia 👑';
+    else if (p.includes('cropped')) textoPOV = 'POV: esse cropped virou minha peça favorita 💕';
+    else if (p.includes('conjunto')) textoPOV = 'POV: comprei esse conjunto e me sinto imparável 💫';
+    else textoPOV = 'POV: achei a peça perfeita e agora não largo mais 😍';
+  } else {
+    if (p.includes('calça')) textoPOV = 'POV: essa calça ficou melhor do que eu esperava 🔥';
+    else if (p.includes('camisa') || p.includes('camiseta')) textoPOV = 'POV: essa camisa valoriza demais o visual 💪';
+    else if (p.includes('jaqueta') || p.includes('casaco')) textoPOV = 'POV: essa jaqueta elevou meu estilo demais 🧥';
+    else textoPOV = 'POV: look completo e não saio mais de casa sem isso 🔥';
+  }
 
-  // Fala natural da mulher — elogio curto e chamada para ação (em português)
-  const falas = [
+  // ---- FALA NATURAL EM PORTUGUÊS ----
+  const falasFemininas = [
     `Gente, olha que perfeito esse look! Amei demais, fica incrível no corpo. Link na bio!`,
     `Não aguento, que peça linda! Corre porque esgota rápido. Link na bio!`,
     `Essa peça mudou meu guarda-roupa. Fica tão bem! Pega o link na bio antes de acabar!`,
     `Olha como fica lindo! Já comprei e não me arrependi. Aproveita, tá no link da bio!`,
     `Gente, essa peça é tudo! Versátil, confortável e fica incrível. Link na bio!`,
   ];
+  const falasMasculinas = [
+    `Cara, ficou incrível! Melhor do que eu esperava. Link na bio!`,
+    `Não tem como, essa peça é perfeita. Corre lá antes de acabar. Link na bio!`,
+    `Olha como fica bem! Vale muito o investimento. Tá no link da bio!`,
+    `Essa peça é tudo que eu precisava no guarda-roupa. Link na bio!`,
+    `Simples, elegante e fica muito bem. Aproveita, link na bio!`,
+  ];
+
+  const falas = eMasculino ? falasMasculinas : falasFemininas;
   const fala = falas[Math.floor(Math.random() * falas.length)];
 
   return (
     `Generate a vertical 9:16 TikTok video with NO WATERMARK. ` +
+
+    // Descrição exata do modelo
+    `The person in the video must be EXACTLY: ${modelo}. ` +
+    `Use this exact appearance consistently throughout the entire video. ` +
+
+    // Cena
     `Scene: ${estilo} with soft warm natural lighting. ` +
-    `A young Brazilian woman wearing ${produto} films herself in a full-length mirror. ` +
-    `She holds her phone naturally, full body visible. ` +
-    `She ${acaoExtra}. Relaxed, authentic, natural posture — NOT posed or stiff. ` +
+    `The person is wearing ${produto} and films themselves in a full-length mirror. ` +
+    `They hold the phone naturally, full body visible. ` +
+    `They ${acaoExtra}. Relaxed, authentic, natural posture — NOT posed or stiff. ` +
     `UGC creator style, handheld camera feel. ` +
 
-    // Texto na tela estilo TikTok
-    `On screen text overlay at the top in bold white letters: "${textoPOV}". ` +
-    `Add a small emoji relevant to the outfit next to the text. ` +
+    // Texto POV na tela
+    `On screen text overlay at the top in bold white letters with dark outline: "${textoPOV}". ` +
 
-    // Fala em português
-    `The woman speaks naturally in Brazilian Portuguese, casually and briefly: "${fala}". ` +
-    `Her speech should sound spontaneous and genuine, NOT like an advertisement. ` +
-    `She speaks once, naturally, while looking at her reflection. ` +
+    // Fala em português brasileiro
+    `The person speaks naturally in Brazilian Portuguese: "${fala}". ` +
+    `Speech must sound spontaneous and genuine, NOT like a formal advertisement. ` +
+    `Speak once briefly while looking at the reflection. ` +
 
     // Áudio
-    `Background audio: soft bedroom ambiance, light footsteps. ` +
-    `No background music. No English words. Brazilian Portuguese only. ` +
+    `Background audio: soft bedroom ambiance, light footsteps. No background music. ` +
+    `Brazilian Portuguese speech only — absolutely no English words spoken. ` +
 
     // Sem marca d'água
-    `IMPORTANT: Generate with absolutely NO watermark, NO logo, NO brand mark of any kind visible in the video.`
+    `CRITICAL: NO watermark, NO logo, NO brand mark, NO text watermark of any kind in the video.`
   );
 }
 
