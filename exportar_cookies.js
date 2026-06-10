@@ -32,6 +32,8 @@ const cookiesFinais = [];
 
 for (const perfil of PERFIS) {
   const arquivo = path.join(BASE, perfil, 'Network', 'Cookies');
+  console.log(`\n🔍 Verificando: ${arquivo}`);
+  console.log(`   Existe: ${fs.existsSync(arquivo)}`);
   if (!fs.existsSync(arquivo)) continue;
 
   // Copia o arquivo antes de abrir (evita lock do SQLite)
@@ -78,7 +80,8 @@ for (const perfil of PERFIS) {
 
     console.log(`✅ Perfil "${perfil}": ${linhas.length} cookies do Kalodata`);
   } catch (e) {
-    console.log(`⚠️  Perfil "${perfil}" falhou: ${e.message}`);
+    console.log(`⚠️  Perfil "${perfil}" ERRO: ${e.message}`);
+    console.log(e.stack);
   } finally {
     try { fs.unlinkSync(tmp); } catch (_) {}
   }
