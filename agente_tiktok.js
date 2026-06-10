@@ -365,9 +365,64 @@ async function abrirNavegador() {
     } catch (e) {
       console.log(`   ⚠️  Scan encontrou porta mas falhou ao conectar: ${e.message}`);
     }
-  } else {
-    console.log('   ⚠️  GinsBrowser não encontrado em nenhuma porta — usando Edge como fallback.');
   }
+
+  // ── Tentativa 3: GinsBrowser está aberto SEM CDP — relança com debug habilitado ──
+  // Lê a linha de comando do processo para descobrir o user-data-dir real do perfil,
+  // fecha o GinsBrowser e reabre com os mesmos parâmetros + porta de debug.
+  try {
+    const cmdline = execSync(
+      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"name='ginsbrowser.exe'\\" | Select-Object -First 1).CommandLine"`,
+      { encoding: 'utf8' }
+    ).trim();
+
+    if (cmdline) {
+      console.log('   🔄 GinsBrowser aberto sem CDP — relançando com debug...');
+      const mDir = cmdline.match(/--user-data-dir=("([^"]+)"|(\S+))/);
+      const userDataDir = mDir ? (mDir[2] || mDir[3]) : null;
+      const mExe = cmdline.match(/^"?([^"]*ginsbrowser\.exe)/i);
+      const exe = mExe ? mExe[1] : 'C:\\Users\\Henri\\AppData\\Local\\Programs\\DICloak\\Chromium\\Application\\ginsbrowser.exe';
+
+      if (userDataDir) {
+        console.log(`   📂 Perfil real: ${userDataDir}`);
+        // Fecha o GinsBrowser atual
+        try { execSync('taskkill /IM ginsbrowser.exe /F', { encoding: 'utf8' }); } catch (_) {}
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Relança com debug
+        const { spawn } = require('child_process');
+        const proc = spawn(exe, [
+          `--remote-debugging-port=9222`,
+          `--user-data-dir=${userDataDir}`,
+          '--no-first-run',
+          '--start-maximized',
+        ], { detached: true, stdio: 'ignore' });
+        proc.unref();
+
+        for (let t = 0; t < 15; t++) {
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+            const contexts = browser.contexts();
+            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+            ESTADO.navegadorAberto = true;
+            console.log('   ✅ GinsBrowser relançado com CDP — Kalodata ilimitado!');
+            return;
+          } catch (_) {}
+        }
+        console.log('   ⚠️  Relançamento falhou ao conectar.');
+      } else {
+        console.log('   ⚠️  Não achei --user-data-dir na linha de comando do GinsBrowser.');
+        console.log(`   ℹ️  Linha de comando: ${cmdline.slice(0, 300)}`);
+      }
+    } else {
+      console.log('   ⚠️  GinsBrowser não está rodando — abre o perfil #3 no DICloak primeiro.');
+    }
+  } catch (_) {
+    console.log('   ⚠️  Não consegui inspecionar o processo do GinsBrowser.');
+  }
+
+  console.log('   ⚠️  Usando Edge como fallback.');
 
   // ── Fallback: Microsoft Edge com perfil local salvo ──
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
