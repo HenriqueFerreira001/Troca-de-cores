@@ -275,56 +275,91 @@ async function cmdAnalisar(quantidade) {
   console.log('   🔍 Analisando a página...');
   await pagina.waitForTimeout(2000);
 
+  // Aguarda a tabela carregar completamente antes de capturar
+  await pagina.waitForTimeout(3000);
+  try {
+    // Espera pelo menos 5 linhas na tabela aparecerem
+    await pagina.waitForSelector('tr', { timeout: 8000 });
+  } catch { }
+
   // Captura nome E imagem do produto para o Gemini reproduzir a peça com fidelidade
   let produtos = await pagina.evaluate(() => {
-    // Tenta capturar pares { nome, imagem } da tabela do Kalodata
-    const linhas = document.querySelectorAll('tr');
+    const visto = new Set(); // evita duplicatas
     const pares = [];
+
+    // Estratégia 1: percorre todas as linhas da tabela capturando img + nome
+    const linhas = document.querySelectorAll('tr');
     for (const linha of linhas) {
       const img = linha.querySelector('img');
+      // Tenta vários seletores de nome dentro da linha
       const nomeEl = linha.querySelector(
-        '[class*="product-name"],[class*="productName"],[class*="item-name"],[class*="goods-name"],td:nth-child(2) a,td:nth-child(2) span'
+        '[class*="product-name"],[class*="productName"],[class*="product_name"],' +
+        '[class*="item-name"],[class*="itemName"],[class*="goods-name"],' +
+        '[class*="title"],[class*="name"] a,[class*="name"] span,' +
+        'td:nth-child(2) a,td:nth-child(2) span,td:nth-child(2)'
       );
       const nome = nomeEl ? nomeEl.textContent.trim() : '';
-      const imagem = img ? (img.src || img.getAttribute('data-src') || '') : '';
-      if (nome.length > 5) pares.push({ nome, imagem });
+      const imagem = img ? (img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '') : '';
+      if (nome.length > 8 && !visto.has(nome)) {
+        visto.add(nome);
+        pares.push({ nome, imagem });
+      }
     }
-    if (pares.length >= 3) return pares.slice(0, 20);
+    if (pares.length >= 3) return pares.slice(0, 50);
 
-    // Fallback: só nomes
+    // Estratégia 2: seletores específicos de nome + imagem vizinha
     const seletores = [
       '[class*="product-name"]', '[class*="productName"]', '[class*="product_name"]',
       '[class*="item-name"]', '[class*="itemName"]', '[class*="goods-name"]',
-      'td:nth-child(2) a', 'td:nth-child(2) span', '.ant-table-cell:nth-child(2)',
+      '[class*="commodity-name"]', '[class*="spu-name"]', '[class*="sku-name"]',
+      '.ant-table-cell:nth-child(2)', 'td:nth-child(2) a', 'td:nth-child(2) span',
     ];
     for (const seletor of seletores) {
       const els = document.querySelectorAll(seletor);
       if (els.length >= 3) {
-        const textos = Array.from(els).map(el => ({ nome: el.textContent.trim(), imagem: '' })).filter(t => t.nome.length > 5);
-        if (textos.length >= 3) return textos.slice(0, 20);
+        const textos = Array.from(els).map(el => {
+          const nome = el.textContent.trim();
+          // Tenta pegar a imagem na mesma célula ou na célula anterior
+          const celula = el.closest('td') || el.closest('tr');
+          const img = celula ? celula.querySelector('img') : null;
+          const imagem = img ? (img.src || img.getAttribute('data-src') || '') : '';
+          return { nome, imagem };
+        }).filter(t => t.nome.length > 8 && !visto.has(t.nome));
+        textos.forEach(t => visto.add(t.nome));
+        pares.push(...textos);
+        if (pares.length >= 5) break;
       }
     }
-    const links = document.querySelectorAll('table a, .table a');
-    if (links.length > 0) {
-      return Array.from(links).map(el => ({ nome: el.textContent.trim(), imagem: '' })).filter(t => t.nome.length > 5).slice(0, 20);
+    if (pares.length >= 3) return pares.slice(0, 50);
+
+    // Estratégia 3: pega qualquer link de produto da tabela
+    const links = document.querySelectorAll('table a, [class*="table"] a, [class*="list"] a');
+    for (const link of links) {
+      const nome = link.textContent.trim();
+      if (nome.length > 8 && !visto.has(nome)) {
+        visto.add(nome);
+        const img = link.querySelector('img') || link.closest('tr')?.querySelector('img');
+        pares.push({ nome, imagem: img ? (img.src || '') : '' });
+      }
     }
-    return [];
+    return pares.slice(0, 50);
   });
 
   // Normaliza: converte strings antigas para objetos { nome, imagem }
   produtos = produtos.map(p => typeof p === 'string' ? { nome: p, imagem: '' } : p);
 
   produtos = produtos.filter(p => isProdutoValido(p.nome));
+  console.log(`   📦 ${produtos.length} itens encontrados na página antes do filtro.`);
 
   if (produtos.length === 0) {
     console.log('\n   ⚠️  Não encontrei produtos automaticamente.');
-    console.log('   👉 Role até ver a lista de produtos e digite  continuar  para tentar de novo.');
+    console.log('   👉 Role a página até ver a lista de produtos e digite  continuar  para tentar de novo.');
     await aguardarComando('continuar');
 
     const nomes = await pagina.evaluate(() => {
       const todos = document.querySelectorAll('td, [class*="name"], a');
       return Array.from(todos).map(el => el.textContent.trim())
-        .filter(t => t.length > 15 && t.length < 200).slice(0, 30);
+        .filter(t => t.length > 15 && t.length < 200).slice(0, 50);
     });
     produtos = nomes.map(n => ({ nome: n, imagem: '' })).filter(p => isProdutoValido(p.nome));
   }
