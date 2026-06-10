@@ -211,15 +211,22 @@ async function cmdAnalisar(quantidade) {
     'seller', 'vendedor', 'followers', 'seguidores'
   ];
 
-  // Palavras que confirmam roupa FEMININA
+  // Palavras que confirmam produto FEMININO (roupa + acessórios)
   const palavrasRoupas = [
+    // Roupas femininas
     'vestido', 'blusa', 'saia', 'cropped', 'legging', 'macacão',
     'lingerie', 'kimono', 'cardigan', 'feminina', 'feminino', 'mulher',
     'woman', 'dress', 'blouse', 'skirt', 'calça feminina', 'calça larga feminina',
     'calça flare feminina', 'jaqueta feminina', 'casaco feminino',
     'moletom feminino', 'conjunto feminino', 'camiseta feminina',
     'camisa feminina', 'regata feminina', 'short feminino', 'bermuda feminina',
-    'body feminino', 'tricot', 'blazer feminino', 'colete feminino'
+    'body feminino', 'tricot', 'blazer feminino', 'colete feminino',
+    // Acessórios femininos — bolsa, sapato, sandália etc. são permitidos
+    'bolsa', 'bolsinha', 'clutch', 'carteira feminina', 'mala feminina',
+    'sapato feminino', 'sapato', 'sandália', 'scarpin', 'plataforma',
+    'sapatilha', 'tamanco', 'salto', 'mule', 'bota feminina',
+    'chinelo feminino', 'rasteirinha', 'tênis feminino',
+    'colar', 'brinco', 'anel', 'pulseira', 'tiara', 'acessório feminino'
   ];
 
   // Palavras que indicam roupa MASCULINA — produtos ignorados
@@ -231,17 +238,21 @@ async function cmdAnalisar(quantidade) {
     'polo masculina', 'paletó', 'kit 2 calça'
   ];
 
-  // Produtos que não são roupa (ignorados — nunca gera vídeo para estes)
+  // Produtos bloqueados — eletrônicos, fitness, casa, etc.
+  // PERMITIDOS: sapato, sandália, bolsa, carteira, acessórios femininos em geral
   const naoERoupa = [
+    // Fitness / Academia
     'bicicleta', 'bike', 'spin', 'spinning', 'ergométrica', 'esteira',
-    'haltere', 'fitness', 'academia', 'musculação',
-    'figurinha', 'envelope', 'monitor', 'suplemento', 'proteína',
-    'mochila', 'tênis', 'sapato', 'sandália', 'chinelo', 'calçado',
-    'bolsa', 'carteira', 'mala', 'perfume', 'cosmético', 'maquiagem',
-    'eletrônico', 'celular', 'fone', 'cabo', 'carregador', 'tablet',
-    'notebook', 'mouse', 'teclado', 'cama', 'colchão', 'travesseiro',
-    'panela', 'frigideira', 'utensílio', 'cozinha', 'brinquedo',
-    'kit treino', 'kit academia', 'kit fitness'
+    'haltere', 'musculação', 'kit treino', 'kit academia', 'kit fitness',
+    // Eletrônicos
+    'eletrônico', 'celular', 'smartphone', 'fone', 'cabo', 'carregador',
+    'tablet', 'notebook', 'monitor', 'mouse', 'teclado',
+    // Suplementos / Alimentos
+    'suplemento', 'proteína', 'whey', 'creatina',
+    // Casa / Cozinha
+    'cama', 'colchão', 'travesseiro', 'panela', 'frigideira', 'utensílio',
+    // Outros
+    'figurinha', 'brinquedo', 'ferramenta'
   ];
 
   function isProdutoValido(texto) {
