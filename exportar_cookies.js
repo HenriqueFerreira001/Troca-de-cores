@@ -12,9 +12,12 @@
 const fs   = require('fs');
 const path = require('path');
 
-// Pastas de cookies do GinsBrowser (perfil #3 do DICloak)
-const BASE = 'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106';
-const PERFIS = ['Default', 'Profile 1', 'Guest Profile'];
+// Caminhos exatos dos arquivos de cookies encontrados pelo PowerShell
+const ARQUIVOS_COOKIES = [
+  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Default\\Network\\Cookies',
+  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Guest Profile\\Network\\Cookies',
+  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Profile 1\\Network\\Cookies',
+];
 
 // Verifica se o better-sqlite3 está instalado
 let Database;
@@ -30,8 +33,8 @@ const DOMINIO = 'kalodata';
 let totalExportados = 0;
 const cookiesFinais = [];
 
-for (const perfil of PERFIS) {
-  const arquivo = path.join(BASE, perfil, 'Network', 'Cookies');
+for (const arquivo of ARQUIVOS_COOKIES) {
+  const perfil = arquivo.split('\\').slice(-3, -2)[0]; // ex: "Default"
   console.log(`\n🔍 Verificando: ${arquivo}`);
   console.log(`   Existe: ${fs.existsSync(arquivo)}`);
   if (!fs.existsSync(arquivo)) continue;
@@ -46,9 +49,9 @@ for (const perfil of PERFIS) {
     // Mostra todos os domínios pra debug
     const dominios = db.prepare(`SELECT DISTINCT host_key FROM cookies ORDER BY host_key`).all();
     if (dominios.length > 0) {
-      console.log(`   Domínios no perfil "${perfil}": ${dominios.map(d => d.host_key).join(', ')}`);
+      console.log(`   Domínios em "${perfil}": ${dominios.map(d => d.host_key).join(', ')}`);
     } else {
-      console.log(`   Perfil "${perfil}" vazio.`);
+      console.log(`   "${perfil}" vazio.`);
     }
 
     const linhas = db.prepare(
