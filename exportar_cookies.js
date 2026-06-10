@@ -40,6 +40,15 @@ for (const perfil of PERFIS) {
 
   try {
     const db = new Database(tmp, { readonly: true });
+
+    // Mostra todos os domínios pra debug
+    const dominios = db.prepare(`SELECT DISTINCT host_key FROM cookies ORDER BY host_key`).all();
+    if (dominios.length > 0) {
+      console.log(`   Domínios no perfil "${perfil}": ${dominios.map(d => d.host_key).join(', ')}`);
+    } else {
+      console.log(`   Perfil "${perfil}" vazio.`);
+    }
+
     const linhas = db.prepare(
       `SELECT name, value, host_key, path, expires_utc, is_httponly, is_secure, samesite
        FROM cookies WHERE host_key LIKE ?`
