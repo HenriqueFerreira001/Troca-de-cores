@@ -385,30 +385,43 @@ async function abrirNavegador() {
 
       if (userDataDir) {
         console.log(`   📂 Perfil real: ${userDataDir}`);
+
+        // Extrai TODOS os argumentos originais da linha de comando
+        // (o GinsBrowser precisa das flags especiais do DICloak para não fechar sozinho)
+        const argsOriginais = [];
+        const reArg = /"([^"]+)"|(\S+)/g;
+        let m;
+        let primeiro = true;
+        while ((m = reArg.exec(cmdline)) !== null) {
+          const arg = m[1] || m[2];
+          if (primeiro) { primeiro = false; continue; } // pula o caminho do exe
+          if (arg.startsWith('--remote-debugging')) continue;
+          argsOriginais.push(arg);
+        }
+        argsOriginais.push('--remote-debugging-port=9222');
+
         // Fecha o GinsBrowser atual
         try { execSync('taskkill /IM ginsbrowser.exe /F', { encoding: 'utf8' }); } catch (_) {}
         await new Promise(r => setTimeout(r, 3000));
 
-        // Deixa o Playwright lançar o GinsBrowser direto com o perfil real —
-        // ele gerencia a conexão sozinho, sem depender de porta CDP fixa.
-        try {
-          ESTADO.contexto = await chromium.launchPersistentContext(userDataDir, {
-            headless: false,
-            executablePath: exe,
-            args: [
-              '--start-maximized',
-              '--disable-blink-features=AutomationControlled',
-            ],
-            ignoreDefaultArgs: ['--enable-automation'],
-            viewport: null,
-            timeout: 60000,
-          });
-          ESTADO.navegadorAberto = true;
-          console.log('   ✅ GinsBrowser aberto pelo Playwright — Kalodata ilimitado!');
-          return;
-        } catch (e) {
-          console.log(`   ⚠️  Playwright falhou ao lançar GinsBrowser: ${e.message.split('\n')[0]}`);
+        // Relança com a linha de comando original + porta de debug
+        const { spawn } = require('child_process');
+        console.log(`   🚀 Relançando GinsBrowser com ${argsOriginais.length} argumentos originais...`);
+        const proc = spawn(exe, argsOriginais, { detached: true, stdio: 'ignore' });
+        proc.unref();
+
+        for (let t = 0; t < 20; t++) {
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+            const contexts = browser.contexts();
+            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+            ESTADO.navegadorAberto = true;
+            console.log('   ✅ GinsBrowser relançado com CDP — Kalodata ilimitado!');
+            return;
+          } catch (_) {}
         }
+        console.log('   ⚠️  GinsBrowser relançado mas CDP não respondeu na porta 9222.');
       } else {
         console.log('   ⚠️  Não achei --user-data-dir na linha de comando do GinsBrowser.');
         console.log(`   ℹ️  Linha de comando: ${cmdline.slice(0, 300)}`);
