@@ -169,7 +169,7 @@ async function cmdAnalisar(quantidade) {
     await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'domcontentloaded', timeout: 60000 });
   }
 
-  await pagina.waitForTimeout(3000);
+  await pagina.waitForTimeout(4000);
 
   console.log('\n' + '='.repeat(55));
   console.log('   🔐 AÇÃO NECESSÁRIA — 1 clique!');
@@ -184,22 +184,56 @@ async function cmdAnalisar(quantidade) {
 
   await pagina.waitForTimeout(2000);
 
-  // Tenta aplicar filtros automaticamente
-  try {
-    await pagina.locator('text=Last 7 days, text=7 days').first().click({ timeout: 4000 });
-    await pagina.waitForTimeout(1500);
-    console.log('   ✅ Filtro de data: Últimos 7 dias');
-  } catch { }
+  // Aplica filtros automaticamente: Roupas Femininas + Acessórios de Moda + Últimos 30 dias
+  console.log('   🔧 Aplicando filtros de categoria...');
 
+  // Filtro de data: Últimos 30 dias
   try {
-    await pagina.locator('text=Category, text=Categoria').first().click({ timeout: 4000 });
+    const btnData = pagina.locator('text=Últimos 30 dias, text=Last 30 days, text=30 dias, text=30days').first();
+    await btnData.click({ timeout: 5000 });
     await pagina.waitForTimeout(1000);
-    await pagina.locator('text=Womenswear, text=Women, text=Roupas').first().click({ timeout: 4000 });
+    console.log('   ✅ Filtro de data: Últimos 30 dias');
+  } catch {
+    // Tenta clicar no seletor de data e escolher 30 dias
+    try {
+      await pagina.locator('[class*="date"], [class*="Date"]').first().click({ timeout: 3000 });
+      await pagina.waitForTimeout(500);
+      await pagina.locator('text=30').first().click({ timeout: 3000 });
+      await pagina.waitForTimeout(1000);
+    } catch { }
+  }
+
+  // Filtro de categoria: Roupas Femininas + Acessórios de Moda
+  try {
+    // Clica em "Categoria" no menu lateral
+    const btnCategoria = pagina.locator('text=Categoria, text=Category').first();
+    await btnCategoria.click({ timeout: 5000 });
     await pagina.waitForTimeout(1000);
-    await pagina.locator('text=Apply, text=Aplicar').first().click({ timeout: 4000 });
-    await pagina.waitForTimeout(3000);
-    console.log('   ✅ Filtro de categoria: Roupas Femininas');
-  } catch { }
+
+    // Seleciona "Roupas femininas"
+    try {
+      await pagina.locator('text=Roupas femininas, text=Womenswear, text=Women').first().click({ timeout: 4000 });
+      await pagina.waitForTimeout(500);
+      console.log('   ✅ Categoria: Roupas Femininas selecionada');
+    } catch { }
+
+    // Seleciona "Acessórios de moda"
+    try {
+      await pagina.locator('text=Acessórios de moda, text=Fashion Accessories, text=Accessories').first().click({ timeout: 4000 });
+      await pagina.waitForTimeout(500);
+      console.log('   ✅ Categoria: Acessórios de Moda selecionada');
+    } catch { }
+
+    // Clica em Enviar / Aplicar
+    try {
+      await pagina.locator('text=Enviar, text=Apply, text=Aplicar, text=Confirmar').first().click({ timeout: 4000 });
+      await pagina.waitForTimeout(3000);
+      console.log('   ✅ Filtros aplicados!');
+    } catch { }
+  } catch {
+    console.log('   ⚠️  Não consegui aplicar os filtros automaticamente.');
+    console.log('   👉 Verifique se os filtros "Roupas Femininas" e "Acessórios de Moda" estão ativos e salve-os no Kalodata.');
+  }
 
   // Palavras que indicam texto de interface (não produto)
   const textosDaInterface = [
