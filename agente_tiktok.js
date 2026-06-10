@@ -218,262 +218,7 @@ async function descobrirPortaDICloak() {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  // ── Tentativa 1: API local do DICloak (porta 27777) para abrir perfil e obter CDP ──
-  // O DICloak expõe uma API REST que abre o perfil e retorna o endpoint CDP do GinsBrowser.
-  const portasDICloak = [27777, 50325, 50326, 8848, 8849];
-  let conectado = false;
-
-  for (const porta of portasDICloak) {
-    try {
-      // 1) Abre o perfil via API do DICloak
-      const respostaAbrir = await new Promise((resolve, reject) => {
-        const req = https.request(
-          { hostname: '127.0.0.1', port: porta, path: `/api/v1/browser/open?profileId=${CONFIG.diCloakPerfilId}`, method: 'GET', rejectUnauthorized: false },
-          res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); }
-        );
-        req.on('error', reject);
-        req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
-        req.end();
-      }).catch(() => null);
-
-      if (!respostaAbrir) continue;
-
-      // Tenta também HTTP simples (alguns builds usam http)
-      const respostaHttp = respostaAbrir.status >= 400 || !respostaAbrir.body.includes('ws')
-        ? await new Promise((resolve, reject) => {
-            const http = require('http');
-            const req = http.request(
-              { hostname: '127.0.0.1', port: porta, path: `/api/v1/browser/open?profileId=${CONFIG.diCloakPerfilId}`, method: 'GET' },
-              res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); }
-            );
-            req.on('error', reject);
-            req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
-            req.end();
-          }).catch(() => null)
-        : respostaAbrir;
-
-      const resposta = respostaHttp || respostaAbrir;
-      if (!resposta) continue;
-
-      console.log(`   🔗 DICloak API porta ${porta}: ${resposta.body.slice(0, 200)}`);
-
-      // 2) Extrai o webSocketDebuggerUrl ou wsEndpoint da resposta JSON
-      let wsUrl = null;
-      try {
-        const json = JSON.parse(resposta.body);
-        wsUrl = json.data?.ws || json.data?.webSocketDebuggerUrl || json.ws || json.webSocketDebuggerUrl
-               || json.data?.wsEndpoint || json.wsEndpoint;
-        // Alguns retornam { data: { port: 9222 } }
-        if (!wsUrl && (json.data?.port || json.port)) {
-          const p = json.data?.port || json.port;
-          wsUrl = `http://127.0.0.1:${p}`;
-        }
-      } catch (_) {}
-
-      if (!wsUrl) {
-        // Tenta extrair porta de texto livre: "port":9222 ou ws://127.0.0.1:9222
-        const m = resposta.body.match(/"port"\s*:\s*(\d+)|ws:\/\/127\.0\.0\.1:(\d+)/);
-        if (m) wsUrl = `http://127.0.0.1:${m[1] || m[2]}`;
-      }
-
-      if (wsUrl) {
-        // Aguarda o browser ficar pronto
-        for (let t = 0; t < 10; t++) {
-          await new Promise(r => setTimeout(r, 1500));
-          try {
-            const browser = await chromium.connectOverCDP(wsUrl);
-            const contexts = browser.contexts();
-            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-            ESTADO.navegadorAberto = true;
-            conectado = true;
-            console.log(`   ✅ Conectado ao DICloak perfil #${CONFIG.diCloakPerfilId} (Kalodata ilimitado).`);
-            break;
-          } catch (_) {}
-        }
-      }
-
-      if (conectado) break;
-    } catch (_) {}
-  }
-
-  if (conectado) return;
-
-  // ── Tentativa 2: Escaneia portas em busca do GinsBrowser já aberto com CDP ──
-  // Quando o usuário já abriu o perfil no DICloak, o GinsBrowser fica numa porta aleatória.
-  // /json/version retorna JSON com "webSocketDebuggerUrl" se for um browser CDP.
-  console.log('   🔍 Escaneando portas para GinsBrowser já aberto...');
-  const http = require('http');
-  const { execSync } = require('child_process');
-
-  // Pega TODAS as portas TCP em escuta no PC via netstat
-  let portasEscanear = [];
-  try {
-    const saida = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
-    const portas = new Set();
-    for (const linha of saida.split('\n')) {
-      const m = linha.match(/TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):(\d+)\s+\S+\s+LISTENING/);
-      if (m) portas.add(parseInt(m[1]));
-    }
-    portasEscanear = [...portas];
-    console.log(`   📡 ${portasEscanear.length} portas em escuta encontradas.`);
-  } catch (_) {
-    // fallback: ranges comuns
-    for (let p = 9200; p <= 9230; p++) portasEscanear.push(p);
-    for (let p = 50300; p <= 50400; p++) portasEscanear.push(p);
-    portasEscanear.push(27777, 8848, 8849, 9222, 9229);
-  }
-
-  const checarPorta = (porta) => new Promise(resolve => {
-    const req = http.request(
-      { hostname: '127.0.0.1', port: porta, path: '/json/version', method: 'GET' },
-      res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ porta, body: d })); }
-    );
-    req.on('error', () => resolve(null));
-    req.setTimeout(300, () => { req.destroy(); resolve(null); });
-    req.end();
-  });
-
-  // Checa em lotes de 20 para não demorar demais
-  let wsGins = null;
-  for (let i = 0; i < portasEscanear.length; i += 20) {
-    const lote = portasEscanear.slice(i, i + 20);
-    const resultados = await Promise.all(lote.map(checarPorta));
-    for (const r of resultados) {
-      if (!r || !r.body) continue;
-      try {
-        const json = JSON.parse(r.body);
-        const browser = json.Browser || '';
-        // Verifica se é GinsBrowser ou qualquer Chromium (não Edge/Chrome padrão)
-        if (json.webSocketDebuggerUrl && (browser.toLowerCase().includes('gins') || browser.toLowerCase().includes('chrom'))) {
-          wsGins = `http://127.0.0.1:${r.porta}`;
-          console.log(`   ✅ GinsBrowser encontrado na porta ${r.porta}: ${browser}`);
-          break;
-        }
-      } catch (_) {}
-    }
-    if (wsGins) break;
-  }
-
-  if (wsGins) {
-    try {
-      const browser = await chromium.connectOverCDP(wsGins);
-      const contexts = browser.contexts();
-      ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-      ESTADO.navegadorAberto = true;
-      console.log(`   ✅ Conectado ao GinsBrowser via scan de porta.`);
-      return;
-    } catch (e) {
-      console.log(`   ⚠️  Scan encontrou porta mas falhou ao conectar: ${e.message}`);
-    }
-  }
-
-  // ── Tentativa 3: GinsBrowser está aberto SEM CDP — relança com debug habilitado ──
-  // Lê a linha de comando do processo para descobrir o user-data-dir real do perfil,
-  // fecha o GinsBrowser e reabre com os mesmos parâmetros + porta de debug.
-  try {
-    const cmdline = execSync(
-      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"name='ginsbrowser.exe'\\" | Select-Object -First 1).CommandLine"`,
-      { encoding: 'utf8' }
-    ).trim();
-
-    if (cmdline) {
-      console.log('   🔄 GinsBrowser aberto sem CDP — relançando com debug...');
-      const mDir = cmdline.match(/--user-data-dir=("([^"]+)"|(\S+))/);
-      const userDataDir = mDir ? (mDir[2] || mDir[3]) : null;
-      const mExe = cmdline.match(/^"?([^"]*ginsbrowser\.exe)/i);
-      const exe = mExe ? mExe[1] : 'C:\\Users\\Henri\\AppData\\Local\\Programs\\DICloak\\Chromium\\Application\\ginsbrowser.exe';
-
-      if (userDataDir) {
-        console.log(`   📂 Perfil real: ${userDataDir}`);
-
-        // Extrai TODOS os argumentos originais da linha de comando
-        // (o GinsBrowser precisa das flags especiais do DICloak para não fechar sozinho)
-        const argsOriginais = [];
-        const reArg = /"([^"]+)"|(\S+)/g;
-        let m;
-        let primeiro = true;
-        while ((m = reArg.exec(cmdline)) !== null) {
-          const arg = m[1] || m[2];
-          if (primeiro) { primeiro = false; continue; } // pula o caminho do exe
-          if (arg.startsWith('--remote-debugging')) continue;
-          argsOriginais.push(arg);
-        }
-        argsOriginais.push('--remote-debugging-port=9222');
-
-        // Fecha o GinsBrowser atual
-        try { execSync('taskkill /IM ginsbrowser.exe /F', { encoding: 'utf8' }); } catch (_) {}
-        await new Promise(r => setTimeout(r, 3000));
-
-        // Relança com a linha de comando original + porta de debug
-        const { spawn } = require('child_process');
-        console.log(`   🚀 Relançando GinsBrowser com ${argsOriginais.length} argumentos originais...`);
-        const proc = spawn(exe, argsOriginais, { detached: true, stdio: 'ignore' });
-        proc.unref();
-
-        for (let t = 0; t < 20; t++) {
-          await new Promise(r => setTimeout(r, 1500));
-
-          // Tenta a porta 9222 direto
-          try {
-            const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
-            const contexts = browser.contexts();
-            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-            ESTADO.navegadorAberto = true;
-            console.log('   ✅ GinsBrowser relançado com CDP — Kalodata ilimitado!');
-            return;
-          } catch (_) {}
-
-          // A cada 3 tentativas, re-escaneia TODAS as portas (o GinsBrowser pode remapear)
-          if (t % 3 === 2) {
-            try {
-              const saida2 = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
-              const portas2 = new Set();
-              for (const linha of saida2.split('\n')) {
-                const m2 = linha.match(/TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):(\d+)\s+\S+\s+LISTENING/);
-                if (m2) portas2.add(parseInt(m2[1]));
-              }
-              const resultados2 = await Promise.all([...portas2].map(checarPorta));
-              for (const r of resultados2) {
-                if (!r || !r.body) continue;
-                try {
-                  const json = JSON.parse(r.body);
-                  if (json.webSocketDebuggerUrl) {
-                    console.log(`   🎯 CDP encontrado na porta ${r.porta}: ${json.Browser || '?'}`);
-                    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${r.porta}`);
-                    const contexts = browser.contexts();
-                    ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-                    ESTADO.navegadorAberto = true;
-                    console.log('   ✅ Conectado ao GinsBrowser — Kalodata ilimitado!');
-                    return;
-                  }
-                } catch (_) {}
-              }
-            } catch (_) {}
-          }
-
-          // Verifica se o GinsBrowser ainda está vivo
-          if (t === 10) {
-            try {
-              const vivo = execSync('tasklist /FI "IMAGENAME eq ginsbrowser.exe" /NH', { encoding: 'utf8' });
-              console.log(`   ℹ️  GinsBrowser ${vivo.toLowerCase().includes('ginsbrowser') ? 'ainda rodando' : 'FECHOU sozinho'}.`);
-            } catch (_) {}
-          }
-        }
-        console.log('   ⚠️  GinsBrowser relançado mas CDP não respondeu em nenhuma porta.');
-      } else {
-        console.log('   ⚠️  Não achei --user-data-dir na linha de comando do GinsBrowser.');
-        console.log(`   ℹ️  Linha de comando: ${cmdline.slice(0, 300)}`);
-      }
-    } else {
-      console.log('   ⚠️  GinsBrowser não está rodando — abre o perfil #3 no DICloak primeiro.');
-    }
-  } catch (_) {
-    console.log('   ⚠️  Não consegui inspecionar o processo do GinsBrowser.');
-  }
-
-  console.log('   ⚠️  Usando Edge como fallback.');
-
-  // ── Fallback: Microsoft Edge com perfil local salvo ──
+  // Edge com perfil salvo — sessão fica gravada permanentemente
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
 
@@ -491,6 +236,46 @@ async function abrirNavegador() {
 
   ESTADO.navegadorAberto = true;
   console.log('   ✅ Navegador aberto (Edge).');
+
+  // Importa a sessão do Kalodata exportada do GinsBrowser (cookies_kalodata.json)
+  await importarCookiesKalodata();
+}
+
+// Converte cookies exportados pelo Cookie-Editor para o formato do Playwright
+// e injeta no navegador — assim o Edge entra no Kalodata com a conta ilimitada do DICloak.
+async function importarCookiesKalodata() {
+  const arquivo = './cookies_kalodata.json';
+  if (!fs.existsSync(arquivo)) {
+    console.log('   ℹ️  cookies_kalodata.json não encontrado — usando sessão própria do Edge.');
+    return;
+  }
+  try {
+    const brutos = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
+    const lista = Array.isArray(brutos) ? brutos : (brutos.cookies || []);
+    const mapaSameSite = { no_restriction: 'None', none: 'None', lax: 'Lax', strict: 'Strict', unspecified: 'Lax' };
+
+    const cookies = lista
+      .filter(c => c.name && c.value !== undefined && (c.domain || '').includes('kalodata'))
+      .map(c => ({
+        name: c.name,
+        value: String(c.value),
+        domain: c.domain,
+        path: c.path || '/',
+        expires: c.expirationDate ? Math.floor(c.expirationDate) : -1,
+        httpOnly: !!c.httpOnly,
+        secure: !!c.secure,
+        sameSite: mapaSameSite[String(c.sameSite).toLowerCase()] || 'Lax',
+      }));
+
+    if (cookies.length === 0) {
+      console.log('   ⚠️  Nenhum cookie do Kalodata no arquivo.');
+      return;
+    }
+    await ESTADO.contexto.addCookies(cookies);
+    console.log(`   🍪 ${cookies.length} cookies do Kalodata importados — sessão ilimitada ativa!`);
+  } catch (e) {
+    console.log(`   ⚠️  Falha ao importar cookies: ${e.message}`);
+  }
 }
 
 async function fecharNavegador() {
