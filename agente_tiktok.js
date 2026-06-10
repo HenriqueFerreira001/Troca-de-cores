@@ -389,28 +389,26 @@ async function abrirNavegador() {
         try { execSync('taskkill /IM ginsbrowser.exe /F', { encoding: 'utf8' }); } catch (_) {}
         await new Promise(r => setTimeout(r, 3000));
 
-        // Relança com debug
-        const { spawn } = require('child_process');
-        const proc = spawn(exe, [
-          `--remote-debugging-port=9222`,
-          `--user-data-dir=${userDataDir}`,
-          '--no-first-run',
-          '--start-maximized',
-        ], { detached: true, stdio: 'ignore' });
-        proc.unref();
-
-        for (let t = 0; t < 15; t++) {
-          await new Promise(r => setTimeout(r, 1500));
-          try {
-            const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
-            const contexts = browser.contexts();
-            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-            ESTADO.navegadorAberto = true;
-            console.log('   ✅ GinsBrowser relançado com CDP — Kalodata ilimitado!');
-            return;
-          } catch (_) {}
+        // Deixa o Playwright lançar o GinsBrowser direto com o perfil real —
+        // ele gerencia a conexão sozinho, sem depender de porta CDP fixa.
+        try {
+          ESTADO.contexto = await chromium.launchPersistentContext(userDataDir, {
+            headless: false,
+            executablePath: exe,
+            args: [
+              '--start-maximized',
+              '--disable-blink-features=AutomationControlled',
+            ],
+            ignoreDefaultArgs: ['--enable-automation'],
+            viewport: null,
+            timeout: 60000,
+          });
+          ESTADO.navegadorAberto = true;
+          console.log('   ✅ GinsBrowser aberto pelo Playwright — Kalodata ilimitado!');
+          return;
+        } catch (e) {
+          console.log(`   ⚠️  Playwright falhou ao lançar GinsBrowser: ${e.message.split('\n')[0]}`);
         }
-        console.log('   ⚠️  Relançamento falhou ao conectar.');
       } else {
         console.log('   ⚠️  Não achei --user-data-dir na linha de comando do GinsBrowser.');
         console.log(`   ℹ️  Linha de comando: ${cmdline.slice(0, 300)}`);
