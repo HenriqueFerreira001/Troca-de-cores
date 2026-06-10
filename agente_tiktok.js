@@ -431,11 +431,34 @@ async function gerarVideoGemini(produto, numero) {
     // Monta prompt adaptado ao tipo de roupa
     const prompt = montarPrompt(produto);
 
-    // Digita e envia
+    // Cola o prompt via clipboard (muito mais rápido e confiável que .type())
     const campo = pagina.locator('[contenteditable="true"], textarea, [role="textbox"]').first();
     await campo.click({ timeout: 10000 });
     await pagina.waitForTimeout(500);
-    await campo.type(prompt, { delay: 10 });
+
+    // Copia o texto para a área de transferência e cola no campo
+    await pagina.evaluate((texto) => {
+      const input = document.activeElement;
+      // Limpa o campo antes de colar
+      input.innerHTML = '';
+      // Usa execCommand para colar (funciona bem no Gemini)
+      document.execCommand('insertText', false, texto);
+    }, prompt);
+
+    // Se o evaluate não funcionou, tenta via clipboard do sistema
+    await pagina.waitForTimeout(300);
+    const valorAtual = await campo.inputValue().catch(() => '');
+    const textoNoCampo = await pagina.evaluate(() => document.activeElement?.innerText || '');
+    if (!textoNoCampo.includes('Generate') && !valorAtual.includes('Generate')) {
+      // Fallback: usa clipboard do navegador
+      await pagina.evaluate(async (texto) => {
+        await navigator.clipboard.writeText(texto);
+      }, prompt);
+      await campo.focus();
+      await pagina.keyboard.press('Control+a');
+      await pagina.keyboard.press('Control+v');
+    }
+    await pagina.waitForTimeout(500);
 
     try {
       await pagina.locator('button[aria-label*="Send"], button[aria-label*="Enviar"]').first().click({ timeout: 8000 });
