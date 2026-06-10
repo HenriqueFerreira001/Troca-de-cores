@@ -297,7 +297,63 @@ async function abrirNavegador() {
   }
 
   if (conectado) return;
-  console.log('   ⚠️  DICloak API não respondeu — usando Edge como fallback.');
+
+  // ── Tentativa 2: Escaneia portas em busca do GinsBrowser já aberto com CDP ──
+  // Quando o usuário já abriu o perfil no DICloak, o GinsBrowser fica numa porta aleatória.
+  // /json/version retorna JSON com "webSocketDebuggerUrl" se for um browser CDP.
+  console.log('   🔍 Escaneando portas para GinsBrowser já aberto...');
+  const http = require('http');
+  const portasEscanear = [];
+  // Portas comuns de antidetect browsers + range provável
+  for (let p = 9200; p <= 9230; p++) portasEscanear.push(p);
+  for (let p = 50300; p <= 50400; p++) portasEscanear.push(p);
+  portasEscanear.push(27777, 8848, 8849, 9222, 9229);
+
+  const checarPorta = (porta) => new Promise(resolve => {
+    const req = http.request(
+      { hostname: '127.0.0.1', port: porta, path: '/json/version', method: 'GET' },
+      res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ porta, body: d })); }
+    );
+    req.on('error', () => resolve(null));
+    req.setTimeout(300, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+
+  // Checa em lotes de 20 para não demorar demais
+  let wsGins = null;
+  for (let i = 0; i < portasEscanear.length; i += 20) {
+    const lote = portasEscanear.slice(i, i + 20);
+    const resultados = await Promise.all(lote.map(checarPorta));
+    for (const r of resultados) {
+      if (!r || !r.body) continue;
+      try {
+        const json = JSON.parse(r.body);
+        const browser = json.Browser || '';
+        // Verifica se é GinsBrowser ou qualquer Chromium (não Edge/Chrome padrão)
+        if (json.webSocketDebuggerUrl && (browser.toLowerCase().includes('gins') || browser.toLowerCase().includes('chrom'))) {
+          wsGins = `http://127.0.0.1:${r.porta}`;
+          console.log(`   ✅ GinsBrowser encontrado na porta ${r.porta}: ${browser}`);
+          break;
+        }
+      } catch (_) {}
+    }
+    if (wsGins) break;
+  }
+
+  if (wsGins) {
+    try {
+      const browser = await chromium.connectOverCDP(wsGins);
+      const contexts = browser.contexts();
+      ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+      ESTADO.navegadorAberto = true;
+      console.log(`   ✅ Conectado ao GinsBrowser via scan de porta.`);
+      return;
+    } catch (e) {
+      console.log(`   ⚠️  Scan encontrou porta mas falhou ao conectar: ${e.message}`);
+    }
+  } else {
+    console.log('   ⚠️  GinsBrowser não encontrado em nenhuma porta — usando Edge como fallback.');
+  }
 
   // ── Fallback: Microsoft Edge com perfil local salvo ──
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
