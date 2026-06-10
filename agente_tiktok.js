@@ -218,70 +218,86 @@ async function descobrirPortaDICloak() {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  // ── Tentativa 1: GinsBrowser (DICloak) com perfil Kalodata ilimitado ──
-  const caminhoGins = 'C:\\Users\\Henri\\AppData\\Local\\Programs\\DICloak\\Chromium\\Application\\ginsbrowser.exe';
-  const cacheDICloak = 'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache';
+  // ── Tentativa 1: API local do DICloak (porta 27777) para abrir perfil e obter CDP ──
+  // O DICloak expõe uma API REST que abre o perfil e retorna o endpoint CDP do GinsBrowser.
+  const portasDICloak = [27777, 50325, 50326, 8848, 8849];
+  let conectado = false;
 
-  if (fs.existsSync(caminhoGins)) {
-    console.log('   🔍 GinsBrowser encontrado — tentando conectar via CDP...');
-    const { spawn } = require('child_process');
+  for (const porta of portasDICloak) {
+    try {
+      // 1) Abre o perfil via API do DICloak
+      const respostaAbrir = await new Promise((resolve, reject) => {
+        const req = https.request(
+          { hostname: '127.0.0.1', port: porta, path: `/api/v1/browser/open?profileId=${CONFIG.diCloakPerfilId}`, method: 'GET', rejectUnauthorized: false },
+          res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); }
+        );
+        req.on('error', reject);
+        req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
+        req.end();
+      }).catch(() => null);
 
-    // Descobre a pasta do perfil #3 dentro do cache DICloak
-    // Estrutura: .DIcloakCache/browsers/<id_perfil>/
-    let pastaPerfilId = null;
-    const pastaBrowsers = path.join(cacheDICloak, 'browsers');
-    if (fs.existsSync(pastaBrowsers)) {
-      const entradas = fs.readdirSync(pastaBrowsers);
-      console.log(`   📂 Perfis em browsers/: ${entradas.slice(0,10).join(', ')}`);
-      // Procura pelo id numérico do perfil (ex: "3") ou variações
-      const candidatos = entradas.filter(e =>
-        e === CONFIG.diCloakPerfilId ||
-        e === `profile_${CONFIG.diCloakPerfilId}` ||
-        e.toLowerCase().includes(`_${CONFIG.diCloakPerfilId}`) ||
-        e.toLowerCase() === `profile${CONFIG.diCloakPerfilId}`
-      );
-      if (candidatos.length > 0) {
-        pastaPerfilId = path.join(pastaBrowsers, candidatos[0]);
-        console.log(`   ✅ Perfil DICloak encontrado: ${pastaPerfilId}`);
-      } else if (entradas.length > 0) {
-        // fallback: usa a primeira pasta disponível
-        pastaPerfilId = path.join(pastaBrowsers, entradas[0]);
-        console.log(`   ⚠️  Perfil #${CONFIG.diCloakPerfilId} não encontrado, usando: ${pastaPerfilId}`);
-      }
-    }
+      if (!respostaAbrir) continue;
 
-    const portaCDP = 9222;
-    const userDataDir = pastaPerfilId || path.join(cacheDICloak, 'browsers', CONFIG.diCloakPerfilId);
+      // Tenta também HTTP simples (alguns builds usam http)
+      const respostaHttp = respostaAbrir.status >= 400 || !respostaAbrir.body.includes('ws')
+        ? await new Promise((resolve, reject) => {
+            const http = require('http');
+            const req = http.request(
+              { hostname: '127.0.0.1', port: porta, path: `/api/v1/browser/open?profileId=${CONFIG.diCloakPerfilId}`, method: 'GET' },
+              res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); }
+            );
+            req.on('error', reject);
+            req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
+            req.end();
+          }).catch(() => null)
+        : respostaAbrir;
 
-    // Lança GinsBrowser com debugging habilitado
-    const proc = spawn(caminhoGins, [
-      `--remote-debugging-port=${portaCDP}`,
-      `--user-data-dir=${userDataDir}`,
-      '--no-first-run',
-      '--start-maximized',
-    ], { detached: true, stdio: 'ignore' });
-    proc.unref();
+      const resposta = respostaHttp || respostaAbrir;
+      if (!resposta) continue;
 
-    // Aguarda o browser iniciar e expor o endpoint CDP
-    let conectado = false;
-    for (let tentativa = 0; tentativa < 15; tentativa++) {
-      await new Promise(r => setTimeout(r, 1500));
+      console.log(`   🔗 DICloak API porta ${porta}: ${resposta.body.slice(0, 200)}`);
+
+      // 2) Extrai o webSocketDebuggerUrl ou wsEndpoint da resposta JSON
+      let wsUrl = null;
       try {
-        const browser = await chromium.connectOverCDP(`http://127.0.0.1:${portaCDP}`);
-        const contexts = browser.contexts();
-        ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
-        ESTADO.navegadorAberto = true;
-        conectado = true;
-        console.log('   ✅ Conectado ao GinsBrowser (Kalodata ilimitado).');
-        break;
-      } catch (_) {
-        // ainda inicializando
-      }
-    }
+        const json = JSON.parse(resposta.body);
+        wsUrl = json.data?.ws || json.data?.webSocketDebuggerUrl || json.ws || json.webSocketDebuggerUrl
+               || json.data?.wsEndpoint || json.wsEndpoint;
+        // Alguns retornam { data: { port: 9222 } }
+        if (!wsUrl && (json.data?.port || json.port)) {
+          const p = json.data?.port || json.port;
+          wsUrl = `http://127.0.0.1:${p}`;
+        }
+      } catch (_) {}
 
-    if (conectado) return;
-    console.log('   ⚠️  Não foi possível conectar ao GinsBrowser — usando Edge como fallback.');
+      if (!wsUrl) {
+        // Tenta extrair porta de texto livre: "port":9222 ou ws://127.0.0.1:9222
+        const m = resposta.body.match(/"port"\s*:\s*(\d+)|ws:\/\/127\.0\.0\.1:(\d+)/);
+        if (m) wsUrl = `http://127.0.0.1:${m[1] || m[2]}`;
+      }
+
+      if (wsUrl) {
+        // Aguarda o browser ficar pronto
+        for (let t = 0; t < 10; t++) {
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const browser = await chromium.connectOverCDP(wsUrl);
+            const contexts = browser.contexts();
+            ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+            ESTADO.navegadorAberto = true;
+            conectado = true;
+            console.log(`   ✅ Conectado ao DICloak perfil #${CONFIG.diCloakPerfilId} (Kalodata ilimitado).`);
+            break;
+          } catch (_) {}
+        }
+      }
+
+      if (conectado) break;
+    } catch (_) {}
   }
+
+  if (conectado) return;
+  console.log('   ⚠️  DICloak API não respondeu — usando Edge como fallback.');
 
   // ── Fallback: Microsoft Edge com perfil local salvo ──
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
