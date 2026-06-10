@@ -231,11 +231,17 @@ async function cmdAnalisar(quantidade) {
     'polo masculina', 'paletó', 'kit 2 calça'
   ];
 
-  // Produtos que não são roupa (ignorados)
+  // Produtos que não são roupa (ignorados — nunca gera vídeo para estes)
   const naoERoupa = [
-    'bicicleta', 'spinning', 'ergométrica', 'figurinha', 'envelope',
-    'monitor', 'suplemento', 'proteína', 'mochila', 'tênis', 'sapato',
-    'bolsa', 'calçado', 'perfume', 'cosmético', 'eletrônico', 'celular'
+    'bicicleta', 'bike', 'spin', 'spinning', 'ergométrica', 'esteira',
+    'haltere', 'fitness', 'academia', 'musculação',
+    'figurinha', 'envelope', 'monitor', 'suplemento', 'proteína',
+    'mochila', 'tênis', 'sapato', 'sandália', 'chinelo', 'calçado',
+    'bolsa', 'carteira', 'mala', 'perfume', 'cosmético', 'maquiagem',
+    'eletrônico', 'celular', 'fone', 'cabo', 'carregador', 'tablet',
+    'notebook', 'mouse', 'teclado', 'cama', 'colchão', 'travesseiro',
+    'panela', 'frigideira', 'utensílio', 'cozinha', 'brinquedo',
+    'kit treino', 'kit academia', 'kit fitness'
   ];
 
   function isProdutoValido(texto) {
@@ -293,24 +299,25 @@ async function cmdAnalisar(quantidade) {
     produtos = produtos.filter(isProdutoValido);
   }
 
-  // Prioriza roupas femininas, depois aceita qualquer roupa, depois qualquer produto
+  // SOMENTE roupas femininas — nunca aceita bicicleta, eletrônico, produto masculino etc.
   const roupasFemininas = produtos.filter(p => isProdutoRoupa(p) && !produtoJaUsado(p));
-  const qualquerRoupa = produtos.filter(p => isProdutoRoupa(p));
-  const todos = produtos.filter(p => !produtoJaUsado(p));
+  // Se todos já foram usados nos 30 dias, aceita repetir (mas só roupas femininas)
+  const roupasFemininasComRepetidas = produtos.filter(p => isProdutoRoupa(p));
 
   const qtd = quantidade || CONFIG.quantidadeDeVideos;
-  const listaPriorizada = roupasFemininas.length >= 3 ? roupasFemininas
-    : qualquerRoupa.length >= 3 ? qualquerRoupa
-    : todos.length > 0 ? todos
-    : produtos;
+  const listaPriorizada = roupasFemininas.length > 0
+    ? roupasFemininas
+    : roupasFemininasComRepetidas; // fallback: repete produto já usado, mas nunca aceita não-roupa
 
   ESTADO.produtosEncontrados = listaPriorizada.slice(0, qtd);
 
   if (roupasFemininas.length > 0) {
     console.log(`   👗 ${roupasFemininas.length} produto(s) de roupa feminina encontrado(s).`);
+  } else if (roupasFemininasComRepetidas.length > 0) {
+    console.log(`   ⚠️  Todos os produtos já foram usados recentemente — repetindo ${roupasFemininasComRepetidas.length} produto(s) de roupa feminina.`);
   } else {
-    console.log('   ⚠️  Poucos produtos de roupa feminina — usando todos os produtos encontrados.');
-    console.log('   💡 Dica: aplique o filtro "Womenswear" manualmente no Kalodata para melhores resultados.');
+    console.log('   ❌ Nenhuma roupa feminina encontrada na página.');
+    console.log('   💡 Dica: role até ver a lista de produtos e aplique o filtro "Womenswear" manualmente no Kalodata.');
   }
 
   await pagina.close();
