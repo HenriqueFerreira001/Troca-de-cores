@@ -1038,6 +1038,8 @@ async function notificarTelegram(mensagem) {
 // Usado para pausas onde o usuário precisa fazer algo no navegador
 let _resolverComando = null;
 let _comandoEsperado = null;
+let _modoCookies = false;
+let _bufferCookies = '';
 
 function aguardarComando(cmd) {
   _comandoEsperado = cmd;
@@ -1076,6 +1078,24 @@ async function iniciarInterface() {
   rl.prompt();
 
   rl.on('line', async (linha) => {
+    // ── Modo de captura de cookies: acumula o JSON colado ──
+    if (_modoCookies) {
+      _bufferCookies += linha;
+      try {
+        const dados = JSON.parse(_bufferCookies);
+        const qtd = Array.isArray(dados) ? dados.length : (dados.cookies || []).length;
+        fs.writeFileSync('./cookies_kalodata.json', JSON.stringify(dados, null, 2));
+        _modoCookies = false;
+        _bufferCookies = '';
+        console.log(`\n   ✅ ${qtd} cookies salvos em cookies_kalodata.json!`);
+        console.log('   🔄 Feche o navegador (digite "fechar navegador") e rode "analisar" de novo.\n');
+      } catch (_) {
+        // ainda não é um JSON completo — continua acumulando
+      }
+      rl.prompt();
+      return;
+    }
+
     const cmd = linha.trim().toLowerCase();
     const partes = cmd.split(' ');
     const comando = partes[0];
@@ -1092,7 +1112,13 @@ async function iniciarInterface() {
     }
 
     try {
-      if (comando === 'analisar') {
+      if (comando === 'cookies') {
+        _modoCookies = true;
+        _bufferCookies = '';
+        console.log('\n   📋 MODO COOKIES — cole agora o JSON exportado do Cookie-Editor e aperte ENTER.');
+        console.log('   (No GinsBrowser: abra kalodata.com → ícone Cookie-Editor → Export → copia o JSON)\n');
+
+      } else if (comando === 'analisar') {
         await cmdAnalisar(argumento ? parseInt(argumento) : null);
 
       } else if (comando === 'gerar') {
