@@ -412,6 +412,8 @@ async function abrirNavegador() {
 
         for (let t = 0; t < 20; t++) {
           await new Promise(r => setTimeout(r, 1500));
+
+          // Tenta a porta 9222 direto
           try {
             const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
             const contexts = browser.contexts();
@@ -420,8 +422,44 @@ async function abrirNavegador() {
             console.log('   ✅ GinsBrowser relançado com CDP — Kalodata ilimitado!');
             return;
           } catch (_) {}
+
+          // A cada 3 tentativas, re-escaneia TODAS as portas (o GinsBrowser pode remapear)
+          if (t % 3 === 2) {
+            try {
+              const saida2 = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
+              const portas2 = new Set();
+              for (const linha of saida2.split('\n')) {
+                const m2 = linha.match(/TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):(\d+)\s+\S+\s+LISTENING/);
+                if (m2) portas2.add(parseInt(m2[1]));
+              }
+              const resultados2 = await Promise.all([...portas2].map(checarPorta));
+              for (const r of resultados2) {
+                if (!r || !r.body) continue;
+                try {
+                  const json = JSON.parse(r.body);
+                  if (json.webSocketDebuggerUrl) {
+                    console.log(`   🎯 CDP encontrado na porta ${r.porta}: ${json.Browser || '?'}`);
+                    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${r.porta}`);
+                    const contexts = browser.contexts();
+                    ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+                    ESTADO.navegadorAberto = true;
+                    console.log('   ✅ Conectado ao GinsBrowser — Kalodata ilimitado!');
+                    return;
+                  }
+                } catch (_) {}
+              }
+            } catch (_) {}
+          }
+
+          // Verifica se o GinsBrowser ainda está vivo
+          if (t === 10) {
+            try {
+              const vivo = execSync('tasklist /FI "IMAGENAME eq ginsbrowser.exe" /NH', { encoding: 'utf8' });
+              console.log(`   ℹ️  GinsBrowser ${vivo.toLowerCase().includes('ginsbrowser') ? 'ainda rodando' : 'FECHOU sozinho'}.`);
+            } catch (_) {}
+          }
         }
-        console.log('   ⚠️  GinsBrowser relançado mas CDP não respondeu na porta 9222.');
+        console.log('   ⚠️  GinsBrowser relançado mas CDP não respondeu em nenhuma porta.');
       } else {
         console.log('   ⚠️  Não achei --user-data-dir na linha de comando do GinsBrowser.');
         console.log(`   ℹ️  Linha de comando: ${cmdline.slice(0, 300)}`);
