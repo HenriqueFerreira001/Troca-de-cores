@@ -227,10 +227,13 @@ async function abrirNavegador() {
     const { spawn } = require('child_process');
 
     // Descobre a pasta do perfil #3 dentro do cache DICloak
+    // Estrutura: .DIcloakCache/browsers/<id_perfil>/
     let pastaPerfilId = null;
-    if (fs.existsSync(cacheDICloak)) {
-      const entradas = fs.readdirSync(cacheDICloak);
-      // DICloak nomeia perfis como "profile_3", "3", "Profile 3", etc.
+    const pastaBrowsers = path.join(cacheDICloak, 'browsers');
+    if (fs.existsSync(pastaBrowsers)) {
+      const entradas = fs.readdirSync(pastaBrowsers);
+      console.log(`   📂 Perfis em browsers/: ${entradas.slice(0,10).join(', ')}`);
+      // Procura pelo id numérico do perfil (ex: "3") ou variações
       const candidatos = entradas.filter(e =>
         e === CONFIG.diCloakPerfilId ||
         e === `profile_${CONFIG.diCloakPerfilId}` ||
@@ -238,15 +241,17 @@ async function abrirNavegador() {
         e.toLowerCase() === `profile${CONFIG.diCloakPerfilId}`
       );
       if (candidatos.length > 0) {
-        pastaPerfilId = path.join(cacheDICloak, candidatos[0]);
-        console.log(`   📂 Perfil DICloak encontrado: ${pastaPerfilId}`);
-      } else {
-        console.log(`   ⚠️  Subpastas em ${cacheDICloak}: ${entradas.slice(0,10).join(', ')}`);
+        pastaPerfilId = path.join(pastaBrowsers, candidatos[0]);
+        console.log(`   ✅ Perfil DICloak encontrado: ${pastaPerfilId}`);
+      } else if (entradas.length > 0) {
+        // fallback: usa a primeira pasta disponível
+        pastaPerfilId = path.join(pastaBrowsers, entradas[0]);
+        console.log(`   ⚠️  Perfil #${CONFIG.diCloakPerfilId} não encontrado, usando: ${pastaPerfilId}`);
       }
     }
 
     const portaCDP = 9222;
-    const userDataDir = pastaPerfilId || path.join(cacheDICloak, CONFIG.diCloakPerfilId);
+    const userDataDir = pastaPerfilId || path.join(cacheDICloak, 'browsers', CONFIG.diCloakPerfilId);
 
     // Lança GinsBrowser com debugging habilitado
     const proc = spawn(caminhoGins, [
