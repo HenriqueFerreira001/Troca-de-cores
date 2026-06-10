@@ -1,7 +1,7 @@
 /**
  * =============================================================
  *   AGENTE TIKTOK SHOP — Interface de Comandos no Terminal
- *   Versão 5.0
+ *   Versão 6.0
  * =============================================================
  *
  * ▶️  COMO RODAR:
@@ -836,7 +836,7 @@ async function iniciarInterface() {
 
   // Cabeçalho
   console.log('\n' + '='.repeat(55));
-  console.log('   🤖 AGENTE TIKTOK SHOP v5.0');
+  console.log('   🤖 AGENTE TIKTOK SHOP v6.0');
   console.log('   Gerador automático de vídeos com IA');
   console.log('='.repeat(55));
   console.log('   Digite "ajuda" para ver os comandos disponíveis.');
