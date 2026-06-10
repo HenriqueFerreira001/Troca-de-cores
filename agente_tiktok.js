@@ -35,8 +35,9 @@ const readline = require('readline');
 
 const CONFIG = {
   quantidadeDeVideos: 7,
-  tempoMaximoPorVideo: 180000, // 3 minutos
-  portaDICloak: 9222,          // porta do DICloak (Remote Debug) — mude aqui se necessário
+  tempoMaximoPorVideo: 180000,  // 3 minutos
+  diCloakPerfilId: '3',         // número do perfil Kalodata no DICloak
+  diCloakPortas: [50325, 50326, 8848, 8849, 9222], // portas que o DICloak pode usar
   telegramToken: '',
   telegramChatId: '',
   arquivos: {
@@ -106,33 +107,114 @@ function registrarNoHistorico(nome, videoGerado) {
 
 
 // ============================================================
-// 🌐 NAVEGADOR — Abre e fecha o Edge
+// 🌐 NAVEGADOR — Conecta no DICloak via API local
 // ============================================================
+
+// Faz uma requisição HTTP simples (sem dependências externas)
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const lib = url.startsWith('https') ? require('https') : require('http');
+    lib.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve(data); }
+      });
+    }).on('error', reject);
+  });
+}
+
+function httpPost(url, body) {
+  return new Promise((resolve, reject) => {
+    const lib = require('http');
+    const dados = JSON.stringify(body);
+    const opcoes = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(dados) }
+    };
+    const req = lib.request(url, opcoes, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve(data); }
+      });
+    });
+    req.on('error', reject);
+    req.write(dados);
+    req.end();
+  });
+}
+
+// Descobre em qual porta o DICloak está rodando
+async function descobrirPortaDICloak() {
+  for (const porta of CONFIG.diCloakPortas) {
+    try {
+      await httpGet(`http://localhost:${porta}/api/v1/browser/list?page=1&page_size=10`);
+      console.log(`   ✅ DICloak encontrado na porta ${porta}`);
+      return porta;
+    } catch { }
+  }
+  return null;
+}
 
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  const url = `http://localhost:${CONFIG.portaDICloak}`;
+  console.log('   🔍 Localizando o DICloak...');
+  const porta = await descobrirPortaDICloak();
+
+  if (!porta) {
+    console.log('\n' + '='.repeat(55));
+    console.log('   ❌ DICloak não encontrado!');
+    console.log('='.repeat(55));
+    console.log('   Verifique se o DICloak está aberto e tente novamente.');
+    console.log('='.repeat(55));
+    throw new Error('DICloak não está acessível.');
+  }
+
+  // Pede para o DICloak abrir o perfil Kalodata com debug ativo
+  console.log(`   🚀 Abrindo perfil Kalodata (ID: ${CONFIG.diCloakPerfilId})...`);
+  let wsEndpoint = null;
 
   try {
-    // Conecta no DICloak via CDP — usa o perfil que já está aberto com login e filtros salvos
-    ESTADO.contexto = await chromium.connectOverCDP(url);
-    ESTADO.navegadorAberto = true;
-    console.log('   ✅ Conectado ao DICloak!');
+    const resp = await httpPost(
+      `http://localhost:${porta}/api/v1/browser/start`,
+      { id: CONFIG.diCloakPerfilId }
+    );
+    // A API retorna o endereço WebSocket para conectar via CDP
+    wsEndpoint = resp?.data?.ws || resp?.ws || resp?.webSocketDebuggerUrl || null;
+    if (!wsEndpoint && resp?.data?.http) {
+      // Alguns retornam endpoint HTTP do devtools
+      const info = await httpGet(`${resp.data.http}/json/version`);
+      wsEndpoint = info?.webSocketDebuggerUrl;
+    }
   } catch (e) {
+    console.log(`   ⚠️  Erro ao chamar API do DICloak: ${e.message}`);
+  }
+
+  if (wsEndpoint) {
+    // Conecta via WebSocket CDP
+    ESTADO.contexto = await chromium.connectOverCDP(wsEndpoint);
+    ESTADO.navegadorAberto = true;
+    console.log('   ✅ Conectado ao DICloak via API!');
+  } else {
+    // Fallback: tenta conectar diretamente na porta CDP do perfil aberto
+    console.log('   ⚠️  Tentando conexão direta...');
+    for (const p of [9222, 9223, 9224, 9225]) {
+      try {
+        ESTADO.contexto = await chromium.connectOverCDP(`http://localhost:${p}`);
+        ESTADO.navegadorAberto = true;
+        console.log(`   ✅ Conectado na porta ${p}!`);
+        return;
+      } catch { }
+    }
     console.log('\n' + '='.repeat(55));
-    console.log('   ❌ NÃO FOI POSSÍVEL CONECTAR AO DICLOAK!');
+    console.log('   ❌ Não consegui conectar ao navegador do DICloak.');
+    console.log('   Certifique-se que o perfil "Kalodata" está aberto.');
     console.log('='.repeat(55));
-    console.log('   Siga os passos abaixo:');
-    console.log('');
-    console.log('   1. Abra o DICloak');
-    console.log('   2. Abra o perfil que você usa no Kalodata');
-    console.log('   3. Nas configurações do perfil, ative:');
-    console.log('      "Depuração remota" ou "Remote Debugging"');
-    console.log(`      e defina a porta como ${CONFIG.portaDICloak}`);
-    console.log('   4. Rode o agente novamente');
-    console.log('='.repeat(55));
-    throw new Error('DICloak não está acessível na porta ' + CONFIG.portaDICloak);
+    throw new Error('Falha ao conectar ao DICloak.');
   }
 }
 
