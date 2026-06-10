@@ -37,7 +37,7 @@ const CONFIG = {
   quantidadeDeVideos: 7,
   tempoMaximoPorVideo: 180000,  // 3 minutos
   diCloakPerfilId: '3',         // número do perfil Kalodata no DICloak
-  diCloakPortas: [50325, 50326, 8848, 8849, 9222], // portas que o DICloak pode usar
+  diCloakPortas: [27777, 50325, 50326, 8848, 8849, 9222], // portas que o DICloak pode usar
   telegramToken: '',
   telegramChatId: '',
   arquivos: {
@@ -251,8 +251,8 @@ async function abrirNavegador() {
     console.log('   ✅ Conectado ao DICloak via API!');
   } else {
     // Fallback: tenta conectar diretamente na porta CDP do perfil aberto
-    console.log('   ⚠️  Tentando conexão direta...');
-    for (const p of [9222, 9223, 9224, 9225]) {
+    console.log('   ⚠️  Tentando conexão direta via CDP...');
+    for (const p of [57734, 59607, 27777, 9222, 9223, 9224, 9225]) {
       try {
         ESTADO.contexto = await chromium.connectOverCDP(`http://localhost:${p}`);
         ESTADO.navegadorAberto = true;
