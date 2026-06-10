@@ -303,11 +303,25 @@ async function abrirNavegador() {
   // /json/version retorna JSON com "webSocketDebuggerUrl" se for um browser CDP.
   console.log('   🔍 Escaneando portas para GinsBrowser já aberto...');
   const http = require('http');
-  const portasEscanear = [];
-  // Portas comuns de antidetect browsers + range provável
-  for (let p = 9200; p <= 9230; p++) portasEscanear.push(p);
-  for (let p = 50300; p <= 50400; p++) portasEscanear.push(p);
-  portasEscanear.push(27777, 8848, 8849, 9222, 9229);
+  const { execSync } = require('child_process');
+
+  // Pega TODAS as portas TCP em escuta no PC via netstat
+  let portasEscanear = [];
+  try {
+    const saida = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
+    const portas = new Set();
+    for (const linha of saida.split('\n')) {
+      const m = linha.match(/TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):(\d+)\s+\S+\s+LISTENING/);
+      if (m) portas.add(parseInt(m[1]));
+    }
+    portasEscanear = [...portas];
+    console.log(`   📡 ${portasEscanear.length} portas em escuta encontradas.`);
+  } catch (_) {
+    // fallback: ranges comuns
+    for (let p = 9200; p <= 9230; p++) portasEscanear.push(p);
+    for (let p = 50300; p <= 50400; p++) portasEscanear.push(p);
+    portasEscanear.push(27777, 8848, 8849, 9222, 9229);
+  }
 
   const checarPorta = (porta) => new Promise(resolve => {
     const req = http.request(
