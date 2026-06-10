@@ -147,40 +147,68 @@ function httpPost(url, body) {
   });
 }
 
-// Descobre em qual porta o DICloak está rodando
-async function descobrirPortaDICloak() {
-  // Tenta as portas conhecidas primeiro
-  const portasConhecidas = [...CONFIG.diCloakPortas];
+// Encontra as portas CDP do GinsBrowser (navegador do DICloak)
+async function encontrarPortasCDP() {
+  const { execSync } = require('child_process');
+  const portas = [];
 
-  // Tenta descobrir via netstat (Windows) — pega todas as portas do processo DICloak
   try {
-    const { execSync } = require('child_process');
-    const netstat = execSync('netstat -ano 2>nul', { encoding: 'utf8', timeout: 5000 });
-    // Pega o PID do DICloak
-    const tasklist = execSync('tasklist /FI "IMAGENAME eq DICloak.exe" /NH 2>nul', { encoding: 'utf8', timeout: 5000 });
-    const pidMatch = tasklist.match(/DICloak\.exe\s+(\d+)/i);
-    if (pidMatch) {
-      const pid = pidMatch[1];
-      // Pega todas as portas TCP que esse PID está ouvindo
-      const linhas = netstat.split('\n').filter(l => l.includes(pid) && l.includes('LISTENING'));
-      for (const linha of linhas) {
-        const portaMatch = linha.match(/:(\d+)\s/);
-        if (portaMatch) {
-          const p = parseInt(portaMatch[1]);
-          if (p > 1000 && p < 65000 && !portasConhecidas.includes(p)) {
-            portasConhecidas.unshift(p); // coloca na frente para testar primeiro
+    // Pega o PID do GinsBrowser via wmic (evita problema com $PID do PowerShell)
+    const processos = ['GinsBrowser.exe', 'DICloak.exe', 'chrome.exe'];
+    const pids = [];
+
+    for (const proc of processos) {
+      try {
+        const resultado = execSync(
+          `wmic process where "name='${proc}'" get processid /format:value 2>nul`,
+          { encoding: 'utf8', timeout: 5000 }
+        );
+        const matches = resultado.matchAll(/ProcessId=(\d+)/gi);
+        for (const m of matches) pids.push(m[1]);
+      } catch { }
+    }
+
+    if (pids.length > 0) {
+      // Pega as portas desses PIDs via netstat
+      const netstat = execSync('netstat -ano 2>nul', { encoding: 'utf8', timeout: 8000 });
+      for (const linha of netstat.split('\n')) {
+        for (const pid of pids) {
+          if (linha.includes(pid) && linha.includes('LISTENING')) {
+            const m = linha.match(/:(\d+)\s/);
+            if (m) {
+              const p = parseInt(m[1]);
+              if (p > 8000 && p < 65000 && !portas.includes(p)) portas.push(p);
+            }
           }
         }
       }
     }
   } catch { }
 
-  for (const porta of portasConhecidas) {
+  return portas;
+}
+
+// Descobre porta CDP válida testando /json/version
+async function descobrirPortaDICloak() {
+  console.log('   🔍 Procurando o navegador do DICloak...');
+  const portasDinamica = await encontrarPortasCDP();
+  const todasPortas = [...new Set([...portasDinamica, ...CONFIG.diCloakPortas])];
+
+  for (const porta of todasPortas) {
+    try {
+      const info = await httpGet(`http://localhost:${porta}/json/version`);
+      if (info && info.Browser) {
+        console.log(`   ✅ Navegador CDP encontrado na porta ${porta}: ${info.Browser}`);
+        return { tipo: 'cdp', porta, wsUrl: info.webSocketDebuggerUrl };
+      }
+    } catch { }
+
+    // Também testa a API do DICloak
     try {
       const resp = await httpGet(`http://localhost:${porta}/api/v1/browser/list?page=1&page_size=10`);
-      if (resp && (resp.code !== undefined || resp.data !== undefined)) {
+      if (resp && resp.code !== undefined) {
         console.log(`   ✅ DICloak API encontrada na porta ${porta}`);
-        return porta;
+        return { tipo: 'api', porta };
       }
     } catch { }
   }
@@ -190,82 +218,45 @@ async function descobrirPortaDICloak() {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  console.log('   🔍 Localizando o DICloak...');
-  const porta = await descobrirPortaDICloak();
+  const resultado = await descobrirPortaDICloak();
 
-  if (!porta) {
-    // Mostra as portas que o DICloak está usando para ajudar no diagnóstico
-    try {
-      const { execSync } = require('child_process');
-      const tasklist = execSync('tasklist /FI "IMAGENAME eq DICloak.exe" /NH 2>nul', { encoding: 'utf8' });
-      if (tasklist.toLowerCase().includes('dicloak')) {
-        const netstat = execSync('netstat -ano 2>nul', { encoding: 'utf8', timeout: 5000 });
-        const pidMatch = tasklist.match(/DICloak\.exe\s+(\d+)/i);
-        if (pidMatch) {
-          const pid = pidMatch[1];
-          const portas = [...new Set(
-            netstat.split('\n')
-              .filter(l => l.includes(pid))
-              .map(l => { const m = l.match(/:(\d+)\s/); return m ? m[1] : null; })
-              .filter(Boolean)
-          )];
-          console.log(`   ℹ️  DICloak está rodando (PID ${pid}) nas portas: ${portas.join(', ')}`);
-          console.log(`   👉 Cole essas portas no CONFIG.diCloakPortas e tente de novo.`);
-        }
-      } else {
-        console.log('   ℹ️  DICloak.exe não está rodando!');
-      }
-    } catch { }
-    console.log('\n' + '='.repeat(55));
-    console.log('   ❌ DICloak não encontrado!');
-    console.log('='.repeat(55));
-    console.log('   Verifique se o DICloak está aberto e tente novamente.');
-    console.log('='.repeat(55));
-    throw new Error('DICloak não está acessível.');
-  }
-
-  // Pede para o DICloak abrir o perfil Kalodata com debug ativo
-  console.log(`   🚀 Abrindo perfil Kalodata (ID: ${CONFIG.diCloakPerfilId})...`);
-  let wsEndpoint = null;
-
-  try {
-    const resp = await httpPost(
-      `http://localhost:${porta}/api/v1/browser/start`,
-      { id: CONFIG.diCloakPerfilId }
-    );
-    // A API retorna o endereço WebSocket para conectar via CDP
-    wsEndpoint = resp?.data?.ws || resp?.ws || resp?.webSocketDebuggerUrl || null;
-    if (!wsEndpoint && resp?.data?.http) {
-      // Alguns retornam endpoint HTTP do devtools
-      const info = await httpGet(`${resp.data.http}/json/version`);
-      wsEndpoint = info?.webSocketDebuggerUrl;
-    }
-  } catch (e) {
-    console.log(`   ⚠️  Erro ao chamar API do DICloak: ${e.message}`);
-  }
-
-  if (wsEndpoint) {
-    // Conecta via WebSocket CDP
-    ESTADO.contexto = await chromium.connectOverCDP(wsEndpoint);
+  if (resultado && resultado.tipo === 'cdp') {
+    // Conecta direto via CDP no navegador já aberto
+    const url = resultado.wsUrl || `http://localhost:${resultado.porta}`;
+    ESTADO.contexto = await chromium.connectOverCDP(url);
     ESTADO.navegadorAberto = true;
-    console.log('   ✅ Conectado ao DICloak via API!');
-  } else {
-    // Fallback: tenta conectar diretamente na porta CDP do perfil aberto
-    console.log('   ⚠️  Tentando conexão direta via CDP...');
-    for (const p of [57734, 59607, 27777, 9222, 9223, 9224, 9225]) {
-      try {
-        ESTADO.contexto = await chromium.connectOverCDP(`http://localhost:${p}`);
-        ESTADO.navegadorAberto = true;
-        console.log(`   ✅ Conectado na porta ${p}!`);
-        return;
-      } catch { }
-    }
-    console.log('\n' + '='.repeat(55));
-    console.log('   ❌ Não consegui conectar ao navegador do DICloak.');
-    console.log('   Certifique-se que o perfil "Kalodata" está aberto.');
-    console.log('='.repeat(55));
-    throw new Error('Falha ao conectar ao DICloak.');
+    console.log('   ✅ Conectado ao navegador do DICloak!');
+    return;
   }
+
+  if (resultado && resultado.tipo === 'api') {
+    // Usa a API do DICloak para abrir o perfil e pegar o WS
+    try {
+      const resp = await httpPost(
+        `http://localhost:${resultado.porta}/api/v1/browser/start`,
+        { id: CONFIG.diCloakPerfilId }
+      );
+      const wsUrl = resp?.data?.ws || resp?.ws || resp?.webSocketDebuggerUrl;
+      if (wsUrl) {
+        ESTADO.contexto = await chromium.connectOverCDP(wsUrl);
+        ESTADO.navegadorAberto = true;
+        console.log('   ✅ Conectado ao DICloak via API!');
+        return;
+      }
+    } catch (e) {
+      console.log(`   ⚠️  Erro na API do DICloak: ${e.message}`);
+    }
+  }
+
+  console.log('\n' + '='.repeat(55));
+  console.log('   ❌ Navegador do DICloak não encontrado!');
+  console.log('='.repeat(55));
+  console.log('   Certifique-se que:');
+  console.log('   1. O DICloak está aberto');
+  console.log('   2. O perfil KALODATA está ABERTO (botão Open clicado)');
+  console.log('   3. Rode "analisar" novamente');
+  console.log('='.repeat(55));
+  throw new Error('Falha ao conectar ao DICloak.');
 }
 
 async function fecharNavegador() {
