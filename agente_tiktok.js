@@ -275,7 +275,23 @@ async function cmdAnalisar(quantidade) {
   console.log('   🔍 Analisando a página...');
   await pagina.waitForTimeout(2000);
 
+  // Captura nome E imagem do produto para o Gemini reproduzir a peça com fidelidade
   let produtos = await pagina.evaluate(() => {
+    // Tenta capturar pares { nome, imagem } da tabela do Kalodata
+    const linhas = document.querySelectorAll('tr');
+    const pares = [];
+    for (const linha of linhas) {
+      const img = linha.querySelector('img');
+      const nomeEl = linha.querySelector(
+        '[class*="product-name"],[class*="productName"],[class*="item-name"],[class*="goods-name"],td:nth-child(2) a,td:nth-child(2) span'
+      );
+      const nome = nomeEl ? nomeEl.textContent.trim() : '';
+      const imagem = img ? (img.src || img.getAttribute('data-src') || '') : '';
+      if (nome.length > 5) pares.push({ nome, imagem });
+    }
+    if (pares.length >= 3) return pares.slice(0, 20);
+
+    // Fallback: só nomes
     const seletores = [
       '[class*="product-name"]', '[class*="productName"]', '[class*="product_name"]',
       '[class*="item-name"]', '[class*="itemName"]', '[class*="goods-name"]',
@@ -284,36 +300,39 @@ async function cmdAnalisar(quantidade) {
     for (const seletor of seletores) {
       const els = document.querySelectorAll(seletor);
       if (els.length >= 3) {
-        const textos = Array.from(els).map(el => el.textContent.trim()).filter(t => t.length > 5);
+        const textos = Array.from(els).map(el => ({ nome: el.textContent.trim(), imagem: '' })).filter(t => t.nome.length > 5);
         if (textos.length >= 3) return textos.slice(0, 20);
       }
     }
     const links = document.querySelectorAll('table a, .table a');
     if (links.length > 0) {
-      return Array.from(links).map(el => el.textContent.trim()).filter(t => t.length > 5).slice(0, 20);
+      return Array.from(links).map(el => ({ nome: el.textContent.trim(), imagem: '' })).filter(t => t.nome.length > 5).slice(0, 20);
     }
     return [];
   });
 
-  produtos = produtos.filter(isProdutoValido);
+  // Normaliza: converte strings antigas para objetos { nome, imagem }
+  produtos = produtos.map(p => typeof p === 'string' ? { nome: p, imagem: '' } : p);
+
+  produtos = produtos.filter(p => isProdutoValido(p.nome));
 
   if (produtos.length === 0) {
     console.log('\n   ⚠️  Não encontrei produtos automaticamente.');
     console.log('   👉 Role até ver a lista de produtos e digite  continuar  para tentar de novo.');
     await aguardarComando('continuar');
 
-    produtos = await pagina.evaluate(() => {
+    const nomes = await pagina.evaluate(() => {
       const todos = document.querySelectorAll('td, [class*="name"], a');
       return Array.from(todos).map(el => el.textContent.trim())
         .filter(t => t.length > 15 && t.length < 200).slice(0, 30);
     });
-    produtos = produtos.filter(isProdutoValido);
+    produtos = nomes.map(n => ({ nome: n, imagem: '' })).filter(p => isProdutoValido(p.nome));
   }
 
   // SOMENTE roupas femininas — nunca aceita bicicleta, eletrônico, produto masculino etc.
-  const roupasFemininas = produtos.filter(p => isProdutoRoupa(p) && !produtoJaUsado(p));
+  const roupasFemininas = produtos.filter(p => isProdutoRoupa(p.nome) && !produtoJaUsado(p.nome));
   // Se todos já foram usados nos 30 dias, aceita repetir (mas só roupas femininas)
-  const roupasFemininasComRepetidas = produtos.filter(p => isProdutoRoupa(p));
+  const roupasFemininasComRepetidas = produtos.filter(p => isProdutoRoupa(p.nome));
 
   const qtd = quantidade || CONFIG.quantidadeDeVideos;
   const listaPriorizada = roupasFemininas.length > 0
@@ -340,8 +359,9 @@ async function cmdAnalisar(quantidade) {
 
   console.log(`\n   ✅ ${ESTADO.produtosEncontrados.length} produto(s) encontrado(s):\n`);
   ESTADO.produtosEncontrados.forEach((p, i) => {
-    const jaUsado = produtoJaUsado(p) ? ' ⚠️ (já usado recentemente)' : '';
-    console.log(`   ${i + 1}. ${p.substring(0, 65)}${jaUsado}`);
+    const jaUsado = produtoJaUsado(p.nome) ? ' ⚠️ (já usado recentemente)' : '';
+    const temFoto = p.imagem ? ' 📸' : '';
+    console.log(`   ${i + 1}. ${p.nome.substring(0, 65)}${jaUsado}${temFoto}`);
   });
   console.log('\n   💡 Digite "gerar" para criar os vídeos agora.');
 }
@@ -371,11 +391,12 @@ async function cmdGerar(quantidade) {
   for (let i = 0; i < lista.length; i++) {
     const produto = lista[i];
     console.log(`${'─'.repeat(55)}`);
-    console.log(`🎬 Vídeo ${i + 1} de ${lista.length}: "${produto.substring(0, 50)}"`);
+    const nomeProd = typeof produto === 'string' ? produto : produto.nome;
+    console.log(`🎬 Vídeo ${i + 1} de ${lista.length}: "${nomeProd.substring(0, 50)}"`);
     console.log('─'.repeat(55));
 
     const ok = await gerarVideoGemini(produto, i + 1);
-    registrarNoHistorico(produto, ok);
+    registrarNoHistorico(nomeProd, ok);
 
     if (ok) gerados++;
     else falhas++;
@@ -408,7 +429,11 @@ async function cmdGerar(quantidade) {
 }
 
 // Função interna que gera um vídeo no Gemini
+// produto pode ser string (legado) ou { nome, imagem }
 async function gerarVideoGemini(produto, numero) {
+  // Normaliza para objeto
+  const prod = typeof produto === 'string' ? { nome: produto, imagem: '' } : produto;
+
   const pagina = await ESTADO.contexto.newPage();
   try {
     await pagina.goto('https://gemini.google.com', { waitUntil: 'load', timeout: 60000 });
@@ -428,8 +453,33 @@ async function gerarVideoGemini(produto, numero) {
       console.log('   ✅ Gemini pronto.');
     }
 
+    // Se tiver imagem do produto, baixa e sobe como anexo para o Gemini ver a peça exata
+    if (prod.imagem) {
+      try {
+        console.log('   📸 Enviando foto do produto para o Gemini analisar...');
+        // Baixa a imagem
+        const imgResp = await pagina.request.get(prod.imagem);
+        const imgBuffer = await imgResp.body();
+        const imgPath = path.join(CONFIG.arquivos.screenshots, `produto_temp_${numero}.jpg`);
+        fs.writeFileSync(imgPath, imgBuffer);
+
+        // Clica no botão de anexar arquivo do Gemini
+        const btnAnexar = pagina.locator('[aria-label*="Upload"], [aria-label*="Attach"], [aria-label*="Anexar"], [data-tooltip*="upload"]').first();
+        await btnAnexar.click({ timeout: 5000 });
+        await pagina.waitForTimeout(1000);
+
+        // Sobe a imagem
+        const fileInput = pagina.locator('input[type="file"]').first();
+        await fileInput.setInputFiles(imgPath);
+        await pagina.waitForTimeout(2000);
+        console.log('   ✅ Foto do produto enviada.');
+      } catch {
+        console.log('   ⚠️  Não foi possível enviar a foto — gerando só pelo nome.');
+      }
+    }
+
     // Monta prompt adaptado ao tipo de roupa
-    const prompt = montarPrompt(produto);
+    const prompt = montarPrompt(prod.nome);
 
     // Cola o prompt via clipboard do sistema operacional (evita restrições do Trusted Types)
     const campo = pagina.locator('[contenteditable="true"], textarea, [role="textbox"]').first();
@@ -527,35 +577,44 @@ function montarPrompt(produto) {
   let estilo = 'mirror selfie in a cozy bedroom';
   let acaoExtra = 'adjusts the outfit slightly and smiles naturally at the mirror';
 
+  // Micro-movimentos naturais adicionados a todas as cenas para parecer real
+  const microMovimento = eMasculino
+    ? 'subtle natural breathing movement, slight weight shift between feet, casual and confident'
+    : 'subtle natural breathing movement, slight hip shift, brushes hair back with one hand once';
+
   if (!eMasculino) {
     // Cenas femininas
     if (p.includes('vestido') || p.includes('dress')) {
-      estilo = 'mirror selfie in a bright bedroom, twirling once to show the dress flow';
-      acaoExtra = 'spins once showing the full skirt movement, then stops and smiles';
+      estilo = 'mirror selfie in a bright cozy bedroom with warm natural light';
+      acaoExtra = `does one slow natural spin to show the full dress flow, then stops facing the mirror, smiles softly, ${microMovimento}`;
     } else if (p.includes('calça') || p.includes('legging') || p.includes('pants')) {
-      estilo = 'mirror selfie showing full body, running hands along the sides to show the fit';
-      acaoExtra = 'turns sideways to show the silhouette, then faces forward again';
+      estilo = 'mirror selfie showing full body in a cozy bedroom';
+      acaoExtra = `slowly runs both hands along the sides of the pants to show the fit, turns to a side profile showing the silhouette, then faces forward again, ${microMovimento}`;
     } else if (p.includes('blusa') || p.includes('camiseta') || p.includes('top') || p.includes('cropped')) {
-      estilo = 'mirror selfie in a bedroom, showing the fit of the top';
-      acaoExtra = 'tucks and untucks the top slightly, showing how it fits';
+      estilo = 'mirror selfie in a bedroom with soft warm light';
+      acaoExtra = `lightly tucks the hem once to show the fit, then lets it fall naturally, tilts head slightly to one side, ${microMovimento}`;
     } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
-      estilo = 'mirror selfie opening and closing the jacket to show the full look';
-      acaoExtra = 'opens the jacket wide then closes it, turning sideways';
+      estilo = 'mirror selfie in a cozy bedroom';
+      acaoExtra = `slowly opens the jacket to show the outfit underneath, then closes it and turns sideways, ${microMovimento}`;
     } else if (p.includes('saia') || p.includes('skirt')) {
-      estilo = 'mirror selfie showing the skirt movement with a light sway';
-      acaoExtra = 'sways hips gently to show how the skirt moves';
+      estilo = 'mirror selfie showing full body with soft warm light';
+      acaoExtra = `gently sways hips once to show how the skirt moves, then stands still smiling at reflection, ${microMovimento}`;
+    } else {
+      acaoExtra = `adjusts the outfit slightly, does a slow turn to show full look, smiles naturally at the mirror, ${microMovimento}`;
     }
   } else {
     // Cenas masculinas
     if (p.includes('calça') || p.includes('pants')) {
-      estilo = 'mirror selfie showing full body, hands in pockets showing the fit';
-      acaoExtra = 'turns sideways to show the silhouette, then faces forward';
+      estilo = 'mirror selfie showing full body in a simple clean room';
+      acaoExtra = `puts hands briefly in pockets, turns sideways to show the silhouette, then faces forward, ${microMovimento}`;
     } else if (p.includes('camisa') || p.includes('camiseta') || p.includes('shirt')) {
-      estilo = 'mirror selfie showing upper body, adjusting the collar or hem';
-      acaoExtra = 'buttons or adjusts the shirt slightly, nods approvingly';
+      estilo = 'mirror selfie showing upper body with natural light';
+      acaoExtra = `adjusts the collar or hem slightly, nods approvingly at the reflection, ${microMovimento}`;
     } else if (p.includes('jaqueta') || p.includes('casaco') || p.includes('jacket')) {
-      estilo = 'mirror selfie opening and closing the jacket confidently';
-      acaoExtra = 'opens the jacket wide, then closes it and turns sideways';
+      estilo = 'mirror selfie in a clean simple room';
+      acaoExtra = `opens the jacket wide to show the outfit underneath, then closes it and turns sideways, ${microMovimento}`;
+    } else {
+      acaoExtra = `adjusts the outfit briefly, turns sideways to show full look, ${microMovimento}`;
     }
   }
 
@@ -603,11 +662,16 @@ function montarPrompt(produto) {
     `The person in the video must be EXACTLY: ${modelo}. ` +
     `Use this exact appearance consistently throughout the entire video. ` +
 
-    // Cena
+    // Fidelidade ao produto (se imagem foi enviada junto, Gemini vai usar)
+    `IMPORTANT: Reproduce the clothing item EXACTLY as shown — same color, same cut, same details (pockets, buttons, prints, fabric texture). Do NOT invent or add details not visible in the product. ` +
+
+    // Cena e movimentos naturais
     `Scene: ${estilo} with soft warm natural lighting. ` +
-    `The person is wearing ${produto} and films themselves in a full-length mirror. ` +
+    `The person is wearing the clothing item and films themselves in a full-length mirror. ` +
     `They hold the phone naturally, full body visible. ` +
-    `They ${acaoExtra}. Relaxed, authentic, natural posture — NOT posed or stiff. ` +
+    `They ${acaoExtra}. ` +
+    `The movement must feel REAL and NATURAL — like an actual person recording themselves, NOT a model photoshoot. ` +
+    `Small imperfections are welcome: slight hand tremor on phone, natural blinking, organic weight shifts. ` +
     `UGC creator style, handheld camera feel. ` +
 
     // Texto POV na tela
@@ -642,7 +706,9 @@ function cmdStatus() {
   } else {
     console.log(`   ${ESTADO.produtosEncontrados.length} produto(s) prontos para gerar vídeo:\n`);
     ESTADO.produtosEncontrados.forEach((p, i) => {
-      console.log(`   ${i + 1}. ${p.substring(0, 65)}`);
+      const nome = typeof p === 'string' ? p : p.nome;
+      const foto = (p.imagem) ? ' 📸' : '';
+      console.log(`   ${i + 1}. ${nome.substring(0, 65)}${foto}`);
     });
     console.log('\n   → Digite "gerar" para criar os vídeos.');
     console.log(`   → Digite "gerar 3" para criar apenas 3 vídeos.\n`);
