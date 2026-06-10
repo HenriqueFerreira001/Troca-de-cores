@@ -218,45 +218,24 @@ async function descobrirPortaDICloak() {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  const resultado = await descobrirPortaDICloak();
+  // Usa Edge com perfil salvo — sessão do Kalodata fica gravada permanentemente
+  const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+  const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
 
-  if (resultado && resultado.tipo === 'cdp') {
-    // Conecta direto via CDP no navegador já aberto
-    const url = resultado.wsUrl || `http://localhost:${resultado.porta}`;
-    ESTADO.contexto = await chromium.connectOverCDP(url);
-    ESTADO.navegadorAberto = true;
-    console.log('   ✅ Conectado ao navegador do DICloak!');
-    return;
-  }
+  ESTADO.contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
+    headless: false,
+    executablePath,
+    args: [
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+      '--window-position=0,0',
+    ],
+    ignoreDefaultArgs: ['--enable-automation'],
+    viewport: null,
+  });
 
-  if (resultado && resultado.tipo === 'api') {
-    // Usa a API do DICloak para abrir o perfil e pegar o WS
-    try {
-      const resp = await httpPost(
-        `http://localhost:${resultado.porta}/api/v1/browser/start`,
-        { id: CONFIG.diCloakPerfilId }
-      );
-      const wsUrl = resp?.data?.ws || resp?.ws || resp?.webSocketDebuggerUrl;
-      if (wsUrl) {
-        ESTADO.contexto = await chromium.connectOverCDP(wsUrl);
-        ESTADO.navegadorAberto = true;
-        console.log('   ✅ Conectado ao DICloak via API!');
-        return;
-      }
-    } catch (e) {
-      console.log(`   ⚠️  Erro na API do DICloak: ${e.message}`);
-    }
-  }
-
-  console.log('\n' + '='.repeat(55));
-  console.log('   ❌ Navegador do DICloak não encontrado!');
-  console.log('='.repeat(55));
-  console.log('   Certifique-se que:');
-  console.log('   1. O DICloak está aberto');
-  console.log('   2. O perfil KALODATA está ABERTO (botão Open clicado)');
-  console.log('   3. Rode "analisar" novamente');
-  console.log('='.repeat(55));
-  throw new Error('Falha ao conectar ao DICloak.');
+  ESTADO.navegadorAberto = true;
+  console.log('   ✅ Navegador aberto.');
 }
 
 async function fecharNavegador() {
