@@ -36,6 +36,7 @@ const readline = require('readline');
 const CONFIG = {
   quantidadeDeVideos: 7,
   tempoMaximoPorVideo: 180000, // 3 minutos
+  portaDICloak: 9222,          // porta do DICloak (Remote Debug) — mude aqui se necessário
   telegramToken: '',
   telegramChatId: '',
   arquivos: {
@@ -111,35 +112,28 @@ function registrarNoHistorico(nome, videoGerado) {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-  const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
+  const url = `http://localhost:${CONFIG.portaDICloak}`;
 
-  // Tenta conectar no Edge que já está aberto (porta 9222)
-  // Se não conseguir, abre um Edge novo normalmente
   try {
-    ESTADO.contexto = await chromium.connectOverCDP('http://localhost:9222');
-    console.log('   ✅ Conectado ao Edge que já está aberto!');
+    // Conecta no DICloak via CDP — usa o perfil que já está aberto com login e filtros salvos
+    ESTADO.contexto = await chromium.connectOverCDP(url);
     ESTADO.navegadorAberto = true;
-    return;
-  } catch {
-    console.log('   ℹ️  Abrindo novo Edge...');
+    console.log('   ✅ Conectado ao DICloak!');
+  } catch (e) {
+    console.log('\n' + '='.repeat(55));
+    console.log('   ❌ NÃO FOI POSSÍVEL CONECTAR AO DICLOAK!');
+    console.log('='.repeat(55));
+    console.log('   Siga os passos abaixo:');
+    console.log('');
+    console.log('   1. Abra o DICloak');
+    console.log('   2. Abra o perfil que você usa no Kalodata');
+    console.log('   3. Nas configurações do perfil, ative:');
+    console.log('      "Depuração remota" ou "Remote Debugging"');
+    console.log(`      e defina a porta como ${CONFIG.portaDICloak}`);
+    console.log('   4. Rode o agente novamente');
+    console.log('='.repeat(55));
+    throw new Error('DICloak não está acessível na porta ' + CONFIG.portaDICloak);
   }
-
-  ESTADO.contexto = await chromium.launchPersistentContext(CONFIG.arquivos.perfil, {
-    headless: false,
-    executablePath,
-    args: [
-      '--start-maximized',
-      '--disable-blink-features=AutomationControlled',
-      '--window-position=0,0',
-      '--window-size=1920,1080',
-    ],
-    ignoreDefaultArgs: ['--enable-automation'],
-    viewport: null,
-  });
-
-  ESTADO.navegadorAberto = true;
-  console.log('   ✅ Navegador aberto.');
 }
 
 async function fecharNavegador() {
