@@ -218,7 +218,67 @@ async function descobrirPortaDICloak() {
 async function abrirNavegador() {
   if (ESTADO.navegadorAberto) return;
 
-  // Usa Edge com perfil salvo — sessão do Kalodata fica gravada permanentemente
+  // ── Tentativa 1: GinsBrowser (DICloak) com perfil Kalodata ilimitado ──
+  const caminhoGins = 'C:\\Users\\Henri\\AppData\\Local\\Programs\\DICloak\\Chromium\\Application\\ginsbrowser.exe';
+  const cacheDICloak = 'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache';
+
+  if (fs.existsSync(caminhoGins)) {
+    console.log('   🔍 GinsBrowser encontrado — tentando conectar via CDP...');
+    const { spawn } = require('child_process');
+
+    // Descobre a pasta do perfil #3 dentro do cache DICloak
+    let pastaPerfilId = null;
+    if (fs.existsSync(cacheDICloak)) {
+      const entradas = fs.readdirSync(cacheDICloak);
+      // DICloak nomeia perfis como "profile_3", "3", "Profile 3", etc.
+      const candidatos = entradas.filter(e =>
+        e === CONFIG.diCloakPerfilId ||
+        e === `profile_${CONFIG.diCloakPerfilId}` ||
+        e.toLowerCase().includes(`_${CONFIG.diCloakPerfilId}`) ||
+        e.toLowerCase() === `profile${CONFIG.diCloakPerfilId}`
+      );
+      if (candidatos.length > 0) {
+        pastaPerfilId = path.join(cacheDICloak, candidatos[0]);
+        console.log(`   📂 Perfil DICloak encontrado: ${pastaPerfilId}`);
+      } else {
+        console.log(`   ⚠️  Subpastas em ${cacheDICloak}: ${entradas.slice(0,10).join(', ')}`);
+      }
+    }
+
+    const portaCDP = 9222;
+    const userDataDir = pastaPerfilId || path.join(cacheDICloak, CONFIG.diCloakPerfilId);
+
+    // Lança GinsBrowser com debugging habilitado
+    const proc = spawn(caminhoGins, [
+      `--remote-debugging-port=${portaCDP}`,
+      `--user-data-dir=${userDataDir}`,
+      '--no-first-run',
+      '--start-maximized',
+    ], { detached: true, stdio: 'ignore' });
+    proc.unref();
+
+    // Aguarda o browser iniciar e expor o endpoint CDP
+    let conectado = false;
+    for (let tentativa = 0; tentativa < 15; tentativa++) {
+      await new Promise(r => setTimeout(r, 1500));
+      try {
+        const browser = await chromium.connectOverCDP(`http://127.0.0.1:${portaCDP}`);
+        const contexts = browser.contexts();
+        ESTADO.contexto = contexts.length > 0 ? contexts[0] : await browser.newContext();
+        ESTADO.navegadorAberto = true;
+        conectado = true;
+        console.log('   ✅ Conectado ao GinsBrowser (Kalodata ilimitado).');
+        break;
+      } catch (_) {
+        // ainda inicializando
+      }
+    }
+
+    if (conectado) return;
+    console.log('   ⚠️  Não foi possível conectar ao GinsBrowser — usando Edge como fallback.');
+  }
+
+  // ── Fallback: Microsoft Edge com perfil local salvo ──
   const caminhoEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const executablePath = fs.existsSync(caminhoEdge) ? caminhoEdge : undefined;
 
@@ -235,7 +295,7 @@ async function abrirNavegador() {
   });
 
   ESTADO.navegadorAberto = true;
-  console.log('   ✅ Navegador aberto.');
+  console.log('   ✅ Navegador aberto (Edge).');
 }
 
 async function fecharNavegador() {
