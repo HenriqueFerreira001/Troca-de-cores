@@ -149,11 +149,39 @@ function httpPost(url, body) {
 
 // Descobre em qual porta o DICloak está rodando
 async function descobrirPortaDICloak() {
-  for (const porta of CONFIG.diCloakPortas) {
+  // Tenta as portas conhecidas primeiro
+  const portasConhecidas = [...CONFIG.diCloakPortas];
+
+  // Tenta descobrir via netstat (Windows) — pega todas as portas do processo DICloak
+  try {
+    const { execSync } = require('child_process');
+    const netstat = execSync('netstat -ano 2>nul', { encoding: 'utf8', timeout: 5000 });
+    // Pega o PID do DICloak
+    const tasklist = execSync('tasklist /FI "IMAGENAME eq DICloak.exe" /NH 2>nul', { encoding: 'utf8', timeout: 5000 });
+    const pidMatch = tasklist.match(/DICloak\.exe\s+(\d+)/i);
+    if (pidMatch) {
+      const pid = pidMatch[1];
+      // Pega todas as portas TCP que esse PID está ouvindo
+      const linhas = netstat.split('\n').filter(l => l.includes(pid) && l.includes('LISTENING'));
+      for (const linha of linhas) {
+        const portaMatch = linha.match(/:(\d+)\s/);
+        if (portaMatch) {
+          const p = parseInt(portaMatch[1]);
+          if (p > 1000 && p < 65000 && !portasConhecidas.includes(p)) {
+            portasConhecidas.unshift(p); // coloca na frente para testar primeiro
+          }
+        }
+      }
+    }
+  } catch { }
+
+  for (const porta of portasConhecidas) {
     try {
-      await httpGet(`http://localhost:${porta}/api/v1/browser/list?page=1&page_size=10`);
-      console.log(`   ✅ DICloak encontrado na porta ${porta}`);
-      return porta;
+      const resp = await httpGet(`http://localhost:${porta}/api/v1/browser/list?page=1&page_size=10`);
+      if (resp && (resp.code !== undefined || resp.data !== undefined)) {
+        console.log(`   ✅ DICloak API encontrada na porta ${porta}`);
+        return porta;
+      }
     } catch { }
   }
   return null;
@@ -166,6 +194,28 @@ async function abrirNavegador() {
   const porta = await descobrirPortaDICloak();
 
   if (!porta) {
+    // Mostra as portas que o DICloak está usando para ajudar no diagnóstico
+    try {
+      const { execSync } = require('child_process');
+      const tasklist = execSync('tasklist /FI "IMAGENAME eq DICloak.exe" /NH 2>nul', { encoding: 'utf8' });
+      if (tasklist.toLowerCase().includes('dicloak')) {
+        const netstat = execSync('netstat -ano 2>nul', { encoding: 'utf8', timeout: 5000 });
+        const pidMatch = tasklist.match(/DICloak\.exe\s+(\d+)/i);
+        if (pidMatch) {
+          const pid = pidMatch[1];
+          const portas = [...new Set(
+            netstat.split('\n')
+              .filter(l => l.includes(pid))
+              .map(l => { const m = l.match(/:(\d+)\s/); return m ? m[1] : null; })
+              .filter(Boolean)
+          )];
+          console.log(`   ℹ️  DICloak está rodando (PID ${pid}) nas portas: ${portas.join(', ')}`);
+          console.log(`   👉 Cole essas portas no CONFIG.diCloakPortas e tente de novo.`);
+        }
+      } else {
+        console.log('   ℹ️  DICloak.exe não está rodando!');
+      }
+    } catch { }
     console.log('\n' + '='.repeat(55));
     console.log('   ❌ DICloak não encontrado!');
     console.log('='.repeat(55));
