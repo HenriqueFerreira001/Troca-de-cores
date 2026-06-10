@@ -431,34 +431,31 @@ async function gerarVideoGemini(produto, numero) {
     // Monta prompt adaptado ao tipo de roupa
     const prompt = montarPrompt(produto);
 
-    // Cola o prompt via clipboard (muito mais rápido e confiável que .type())
+    // Cola o prompt via clipboard do sistema operacional (evita restrições do Trusted Types)
     const campo = pagina.locator('[contenteditable="true"], textarea, [role="textbox"]').first();
     await campo.click({ timeout: 10000 });
     await pagina.waitForTimeout(500);
 
-    // Copia o texto para a área de transferência e cola no campo
-    await pagina.evaluate((texto) => {
-      const input = document.activeElement;
-      // Limpa o campo antes de colar
-      input.innerHTML = '';
-      // Usa execCommand para colar (funciona bem no Gemini)
-      document.execCommand('insertText', false, texto);
-    }, prompt);
-
-    // Se o evaluate não funcionou, tenta via clipboard do sistema
-    await pagina.waitForTimeout(300);
-    const valorAtual = await campo.inputValue().catch(() => '');
-    const textoNoCampo = await pagina.evaluate(() => document.activeElement?.innerText || '');
-    if (!textoNoCampo.includes('Generate') && !valorAtual.includes('Generate')) {
-      // Fallback: usa clipboard do navegador
-      await pagina.evaluate(async (texto) => {
+    // Escreve o prompt no clipboard do SO e cola com Ctrl+V
+    await pagina.evaluate(async (texto) => {
+      try {
         await navigator.clipboard.writeText(texto);
-      }, prompt);
-      await campo.focus();
-      await pagina.keyboard.press('Control+a');
-      await pagina.keyboard.press('Control+v');
-    }
+      } catch {
+        // fallback silencioso — o Ctrl+V abaixo resolve
+      }
+    }, prompt);
+    await pagina.waitForTimeout(200);
+    await pagina.keyboard.press('Control+a'); // seleciona tudo que tiver no campo
+    await pagina.keyboard.press('Control+v'); // cola
     await pagina.waitForTimeout(500);
+
+    // Verifica se o texto foi inserido; se não, usa execCommand sem innerHTML
+    const textoNoCampo = await pagina.evaluate(() => document.activeElement?.innerText || '');
+    if (!textoNoCampo.includes('Generate')) {
+      // Último recurso: digita rápido com fill (funciona em algumas versões do Gemini)
+      await campo.fill(prompt);
+      await pagina.waitForTimeout(500);
+    }
 
     try {
       await pagina.locator('button[aria-label*="Send"], button[aria-label*="Enviar"]').first().click({ timeout: 8000 });
