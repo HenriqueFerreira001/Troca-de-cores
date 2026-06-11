@@ -278,6 +278,46 @@ async function importarCookiesKalodata() {
   }
 }
 
+// Abre o Kalodata no Edge, espera o usuário logar, salva os cookies permanentemente
+async function cmdSalvarLogin() {
+  console.log('\n🔐 Abrindo Kalodata para salvar login...');
+  await abrirNavegador();
+  const pagina = await ESTADO.contexto.newPage();
+  await pagina.goto('https://www.kalodata.com/explore', { waitUntil: 'domcontentloaded' });
+
+  console.log('\n══════════════════════════════════════════');
+  console.log('  Faça login no Kalodata que abriu no Edge.');
+  console.log('  Quando estiver logado, volte aqui e');
+  console.log('  digite:  continuar');
+  console.log('══════════════════════════════════════════\n');
+  await esperarComando('continuar');
+
+  // Salva todos os cookies do Kalodata
+  const todos = await ESTADO.contexto.cookies();
+  const kalo = todos.filter(c => c.domain && c.domain.includes('kalodata'));
+
+  if (kalo.length === 0) {
+    console.log('   ⚠️  Nenhum cookie do Kalodata encontrado. Você está logado?\n');
+    await pagina.close();
+    return;
+  }
+
+  // Converte para formato compatível com Cookie-Editor (para importarCookiesKalodata)
+  const sameSiteMap = { None: 'no_restriction', Lax: 'lax', Strict: 'strict' };
+  const exportar = kalo.map(c => ({
+    name: c.name, value: c.value, domain: c.domain, path: c.path,
+    expirationDate: c.expires > 0 ? c.expires : undefined,
+    httpOnly: c.httpOnly, secure: c.secure,
+    sameSite: sameSiteMap[c.sameSite] || 'no_restriction',
+    session: c.expires <= 0,
+  }));
+
+  fs.writeFileSync('./cookies_kalodata.json', JSON.stringify(exportar, null, 2));
+  console.log(`\n   ✅ ${kalo.length} cookies salvos! Login permanente configurado.`);
+  console.log('   Próximas vezes o Edge já abre logado automaticamente.\n');
+  await pagina.close();
+}
+
 async function fecharNavegador() {
   if (ESTADO.contexto) {
     await ESTADO.contexto.close();
@@ -1147,6 +1187,9 @@ async function iniciarInterface() {
 
       } else if (cmd === 'limpar historico') {
         cmdLimparHistorico();
+
+      } else if (cmd === 'salvar login') {
+        await cmdSalvarLogin();
 
       } else if (cmd === 'fechar navegador') {
         await fecharNavegador();
