@@ -880,31 +880,57 @@ function montarPrompt(produto) {
   }
 
   // ---- MONTA O PROMPT FINAL ----
-  // Estrutura: gancho → mostrar produto → falar sobre ele → CTA frete grátis
-  const gancho = eMasculino
-    ? `Cara, você precisa ver esse look agora!`
-    : `Meninas, olha o que chegou pra mim!`;
+  // Ganchos variados — sorteia um diferente a cada vídeo
+  const ganchosF = [
+    `Meninas, eu precisava mostrar isso pra vocês AGORA!`,
+    `Gente, chegou e eu já não consigo parar de usar!`,
+    `Não acredito no que acabou de chegar aqui em casa!`,
+    `Esperem — eu precisava mostrar isso antes de qualquer coisa!`,
+    `Meninas, achei o produto que eu não sabia que precisava!`,
+    `Para tudo! Olha o que eu acabei de receber!`,
+    `Tô passada com esse produto, preciso mostrar pra vocês!`,
+  ];
+  const ganchosM = [
+    `Cara, você precisa ver esse produto agora!`,
+    `Não esperava que fosse tão bom assim, olha isso!`,
+    `Acabou de chegar e já virou favorito aqui!`,
+    `Para tudo — esse produto superou minhas expectativas!`,
+    `Tô chocado com a qualidade, preciso mostrar!`,
+  ];
+
+  const listaGanchos = eMasculino ? ganchosM : ganchosF;
+  const gancho = listaGanchos[Math.floor(Math.random() * listaGanchos.length)];
 
   const sobreProduto = eMasculino
-    ? `talks about the product naturally while showing it: how it fits, the quality, why he likes it`
-    : `talks about the product naturally while showing it: the color, the quality, how it fits her body, why she loves it`;
+    ? `talks about the product naturally while showing it: how it fits, the material quality, why he likes it, what makes it special`
+    : `talks about the product naturally while showing it: the color, the material quality, how it fits her body, small details she loves about it`;
 
-  const cta = eMasculino
-    ? `Cara, esse produto pra mim tá com frete grátis — pra você também pode estar. Clica no carrinho pra ver se o seu tá. Não perde essa chance!`
-    : `Meninas, esse produto pra mim tá com frete grátis — pra você também pode estar. Clica no carrinho pra ver se o seu tá. Não perde essa chance!`;
+  const ctasF = [
+    `Meninas, se vocês gostaram clica no carrinho pra garantir o seu, tá esgotando rápido!`,
+    `Se quiserem o link tá na bio, corre que eu não sei até quando tem estoque!`,
+    `Amei demais, link na bio pra vocês verem também!`,
+    `Clica no link da bio pra ver, vale muito a pena!`,
+  ];
+  const ctasM = [
+    `Se curtiu, link na bio pra garantir o seu!`,
+    `Recomendo demais, link na bio pra ver!`,
+    `Corre no link da bio, tá valendo muito!`,
+  ];
+  const listaCtas = eMasculino ? ctasM : ctasF;
+  const cta = listaCtas[Math.floor(Math.random() * listaCtas.length)];
 
   return (
     `Vertical 9:16 TikTok video. NO watermark anywhere in the video.\n` +
-    `Person: ${modelo}. Personality: naturally cheerful, energetic but human — NOT a TV presenter, like a real person excited about a purchase.\n` +
+    `Person: ${modelo}. Personality: naturally cheerful, energetic but human — NOT a TV presenter, like a real person genuinely excited about a purchase.\n` +
     `Product being shown: "${produto}". Show THIS exact product — exact color, exact cut, exact details. Do NOT change or invent any detail.\n` +
     `\n` +
     `VIDEO STRUCTURE (3 clear parts):\n` +
-    `PART 1 — HOOK (first 2 seconds): Person looks directly at camera with excitement and says: "${gancho}" — eyes wide, genuine reaction, grabs attention immediately.\n` +
-    `PART 2 — SHOW & TELL (middle): ${cena}. Action: ${acao}. While showing the product, ${sobreProduto}. Movement is casual and natural, slight hand tremor on phone, real breathing, relaxed posture. NOT a photoshoot. Talks naturally in Brazilian Portuguese about the product.\n` +
+    `PART 1 — HOOK (first 2 seconds): Person looks directly at camera with genuine excitement and says in Brazilian Portuguese: "${gancho}" — eyes wide, authentic reaction, immediately grabs attention.\n` +
+    `PART 2 — SHOW & TELL (middle): ${cena}. Action: ${acao}. While showing the product, ${sobreProduto}. Movement is casual and natural, slight hand tremor on phone, real breathing, relaxed posture. NOT a photoshoot. Speaks naturally in Brazilian Portuguese throughout.\n` +
     `PART 3 — CALL TO ACTION (last 3 seconds): Person looks back at camera, smiles warmly and says naturally in Brazilian Portuguese: "${cta}"\n` +
     `\n` +
     `Text overlay at top of screen throughout video, bold white letters with black shadow: "${pov}"\n` +
-    `Speech: ALL in Brazilian Portuguese — casual, spontaneous, like texting a friend, NOT an advertisement voice.\n` +
+    `Speech: ALL in Brazilian Portuguese — casual, spontaneous, like talking to a friend, NOT an advertisement voice.\n` +
     `Audio: soft ambient room sound only. No music. Brazilian Portuguese speech only.\n` +
     `Lighting: natural warm bedroom lighting.\n` +
     `CRITICAL: NO watermark, NO logo, NO brand text anywhere in video.`
