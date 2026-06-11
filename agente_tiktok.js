@@ -424,14 +424,29 @@ async function cmdAnalisar(quantidade) {
     'seller', 'vendedor', 'followers', 'seguidores'
   ];
 
-  // Bloqueio mínimo — a URL já filtra por categoria roupa/acessórios
-  // Só rejeita produtos claramente fora do lugar (eletrônicos, fitness, casa)
-  const bloqueados = [
-    'bicicleta', 'bike', 'spinning', 'ergométrica', 'esteira', 'haltere',
-    'celular', 'smartphone', 'fone de ouvido', 'notebook', 'tablet',
-    'panela', 'frigideira', 'coberta', 'edredom', 'colchão', 'travesseiro',
-    'suplemento', 'whey', 'creatina', 'figurinha', 'brinquedo',
-    'envelopes de figurinha', 'jogo de panela'
+  // WHITELIST — só aceita produtos que contenham palavras de roupa/acessório feminino
+  const palavrasFemininas = [
+    // Roupas
+    'blusa','camiseta','camisa','cropped','top','regata','body',
+    'vestido','dress','saia','skirt',
+    'calça','calca','legging','legging','shorts','bermuda','jeans',
+    'conjunto','macacão','macacao','jumpsuit',
+    'jaqueta','casaco','blazer','sobretudo','puffer','moletom','cardigan',
+    'kimono','kaftan','túnica','tunica',
+    'lingerie','sutiã','sutia','calcinha','pijama',
+    'maiô','maio','biquíni','biquini',
+    // Calçados femininos
+    'sandália','sandalia','scarpin','sapatilha','rasteirinha','salto',
+    'mule','ankle boot','plataforma','tamanco',
+    'tênis feminino','tenis feminino','sapato feminino',
+    // Bolsas e acessórios
+    'bolsa','clutch','tote','mochila feminina','carteira feminina',
+    'brinco','colar','pulseira','anel','tiara','cinto','lenço',
+    'óculos feminino','oculos feminino','chapéu feminino','chapeu feminino',
+    'meias feminina','meia calça','meia-calça',
+    // Termos que indicam produto feminino
+    'feminino','feminina','mulher','women','womenswear','lady','ladies',
+    'plus size feminino','tamanho grande feminino',
   ];
 
   function isProdutoValido(texto) {
@@ -444,7 +459,7 @@ async function cmdAnalisar(quantidade) {
 
   function isProdutoRoupa(texto) {
     const t = texto.toLowerCase();
-    return !bloqueados.some(p => t.includes(p));
+    return palavrasFemininas.some(p => t.includes(p));
   }
 
   console.log('   🔍 Analisando a página...');
