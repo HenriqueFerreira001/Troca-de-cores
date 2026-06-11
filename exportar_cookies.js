@@ -12,12 +12,30 @@
 const fs   = require('fs');
 const path = require('path');
 
-// Caminhos exatos dos arquivos de cookies encontrados pelo PowerShell
-const ARQUIVOS_COOKIES = [
-  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Default\\Network\\Cookies',
-  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Guest Profile\\Network\\Cookies',
-  'C:\\Users\\Henri\\AppData\\Roaming\\.DIcloakCache\\20463716900026287106\\ud_20463716900026287106\\Profile 1\\Network\\Cookies',
-];
+// Usa PowerShell para copiar os arquivos de cookies para pasta temporária
+// (Node.js não consegue acessar diretamente caminhos com proteção do Windows)
+const { execSync } = require('child_process');
+const tmpDir = path.join(require('os').tmpdir(), 'dicloak_cookies_export');
+
+console.log('📋 Copiando arquivos de cookies via PowerShell...');
+try {
+  execSync(`powershell -NoProfile -Command "
+    $src = 'C:\\\\Users\\\\Henri\\\\AppData\\\\Roaming\\\\.DIcloakCache'
+    $dst = '${tmpDir.replace(/\\/g, '\\\\')}'
+    New-Item -ItemType Directory -Force -Path $dst | Out-Null
+    Get-ChildItem -Path $src -Recurse -Filter 'Cookies' | ForEach-Object {
+      $safe = $_.FullName.Replace($src, '').Replace('\\\\', '_').Replace('\\\\', '_').TrimStart('_')
+      Copy-Item -Path $_.FullName -Destination (Join-Path $dst $safe) -Force
+    }
+    Write-Host 'OK'
+  "`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] });
+} catch (e) {
+  console.log('Erro PowerShell:', e.message.slice(0, 200));
+}
+
+const ARQUIVOS_COOKIES = fs.existsSync(tmpDir)
+  ? fs.readdirSync(tmpDir).map(f => path.join(tmpDir, f))
+  : [];
 
 // Verifica se o better-sqlite3 está instalado
 let Database;
@@ -33,17 +51,16 @@ const DOMINIO = 'kalodata';
 let totalExportados = 0;
 const cookiesFinais = [];
 
-for (const arquivo of ARQUIVOS_COOKIES) {
-  const perfil = arquivo.split('\\').slice(-3, -2)[0]; // ex: "Default"
-  console.log(`\n🔍 Verificando: ${arquivo}`);
-  console.log(`   Existe: ${fs.existsSync(arquivo)}`);
-  if (!fs.existsSync(arquivo)) continue;
+console.log(`\n📂 Arquivos copiados: ${ARQUIVOS_COOKIES.length}`);
 
-  // Copia o arquivo antes de abrir (evita lock do SQLite)
-  const tmp = arquivo + '.tmp_export';
-  fs.copyFileSync(arquivo, tmp);
+for (const arquivo of ARQUIVOS_COOKIES) {
+  const perfil = path.basename(arquivo);
+  console.log(`\n🔍 Lendo: ${perfil}`);
+
+  const tmp = arquivo + '.tmp';
 
   try {
+    fs.copyFileSync(arquivo, tmp);
     const db = new Database(tmp, { readonly: true });
 
     // Mostra todos os domínios pra debug
