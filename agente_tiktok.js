@@ -290,7 +290,7 @@ async function cmdSalvarLogin() {
   console.log('  Quando estiver logado, volte aqui e');
   console.log('  digite:  continuar');
   console.log('══════════════════════════════════════════\n');
-  await esperarComando('continuar');
+  await aguardarComando('continuar');
 
   // Salva todos os cookies do Kalodata
   const todos = await ESTADO.contexto.cookies();
