@@ -339,10 +339,13 @@ async function cmdAnalisar(quantidade) {
   await abrirNavegador();
   const pagina = await ESTADO.contexto.newPage();
 
+  // Abre direto com filtro de categoria Roupas Femininas (category=2) + Acessórios de Moda (category=6)
+  // ordenado por Receita dos últimos 30 dias — pega só o que realmente vende
+  const url = 'https://www.kalodata.com/product?category=2,6&sort=revenue&dateRange=30';
   try {
-    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'load', timeout: 60000 });
+    await pagina.goto(url, { waitUntil: 'load', timeout: 60000 });
   } catch {
-    await pagina.goto('https://www.kalodata.com/product', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await pagina.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   }
 
   await pagina.waitForTimeout(4000);
@@ -421,48 +424,14 @@ async function cmdAnalisar(quantidade) {
     'seller', 'vendedor', 'followers', 'seguidores'
   ];
 
-  // Palavras que confirmam produto FEMININO (roupa + acessórios)
-  const palavrasRoupas = [
-    // Roupas femininas
-    'vestido', 'blusa', 'saia', 'cropped', 'legging', 'macacão',
-    'lingerie', 'kimono', 'cardigan', 'feminina', 'feminino', 'mulher',
-    'woman', 'dress', 'blouse', 'skirt', 'calça feminina', 'calça larga feminina',
-    'calça flare feminina', 'jaqueta feminina', 'casaco feminino',
-    'moletom feminino', 'conjunto feminino', 'camiseta feminina',
-    'camisa feminina', 'regata feminina', 'short feminino', 'bermuda feminina',
-    'body feminino', 'tricot', 'blazer feminino', 'colete feminino',
-    // Acessórios femininos — bolsa, sapato, sandália etc. são permitidos
-    'bolsa', 'bolsinha', 'clutch', 'carteira feminina', 'mala feminina',
-    'sapato feminino', 'sapato', 'sandália', 'scarpin', 'plataforma',
-    'sapatilha', 'tamanco', 'salto', 'mule', 'bota feminina',
-    'chinelo feminino', 'rasteirinha', 'tênis feminino',
-    'colar', 'brinco', 'anel', 'pulseira', 'tiara', 'acessório feminino'
-  ];
-
-  // Palavras que indicam roupa MASCULINA — produtos ignorados
-  const palavrasMasculinas = [
-    'masculina', 'masculino', 'homem', ' men ', 'male', 'terno',
-    'gravata', 'masculino', 'sarja masculina', 'camisa masculina',
-    'camiseta masculina', 'calça masculina', 'jaqueta masculina',
-    'casaco masculino', 'moletom masculino', 'bermuda masculina',
-    'polo masculina', 'paletó', 'kit 2 calça'
-  ];
-
-  // Produtos bloqueados — eletrônicos, fitness, casa, etc.
-  // PERMITIDOS: sapato, sandália, bolsa, carteira, acessórios femininos em geral
-  const naoERoupa = [
-    // Fitness / Academia
-    'bicicleta', 'bike', 'spin', 'spinning', 'ergométrica', 'esteira',
-    'haltere', 'musculação', 'kit treino', 'kit academia', 'kit fitness',
-    // Eletrônicos
-    'eletrônico', 'celular', 'smartphone', 'fone', 'cabo', 'carregador',
-    'tablet', 'notebook', 'monitor', 'mouse', 'teclado',
-    // Suplementos / Alimentos
-    'suplemento', 'proteína', 'whey', 'creatina',
-    // Casa / Cozinha
-    'cama', 'colchão', 'travesseiro', 'panela', 'frigideira', 'utensílio',
-    // Outros
-    'figurinha', 'brinquedo', 'ferramenta'
+  // Bloqueio mínimo — a URL já filtra por categoria roupa/acessórios
+  // Só rejeita produtos claramente fora do lugar (eletrônicos, fitness, casa)
+  const bloqueados = [
+    'bicicleta', 'bike', 'spinning', 'ergométrica', 'esteira', 'haltere',
+    'celular', 'smartphone', 'fone de ouvido', 'notebook', 'tablet',
+    'panela', 'frigideira', 'coberta', 'edredom', 'colchão', 'travesseiro',
+    'suplemento', 'whey', 'creatina', 'figurinha', 'brinquedo',
+    'envelopes de figurinha', 'jogo de panela'
   ];
 
   function isProdutoValido(texto) {
@@ -475,11 +444,7 @@ async function cmdAnalisar(quantidade) {
 
   function isProdutoRoupa(texto) {
     const t = texto.toLowerCase();
-    // Rejeita masculino e não-roupa
-    if (palavrasMasculinas.some(p => t.includes(p))) return false;
-    if (naoERoupa.some(p => t.includes(p))) return false;
-    // Aceita se tiver palavra feminina
-    return palavrasRoupas.some(p => t.includes(p));
+    return !bloqueados.some(p => t.includes(p));
   }
 
   console.log('   🔍 Analisando a página...');
