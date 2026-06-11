@@ -879,17 +879,35 @@ function montarPrompt(produto) {
     fala = `Olha como ficou! Incrível. Aproveita, link na bio!`;
   }
 
-  // ---- MONTA O PROMPT FINAL — curto e direto ----
+  // ---- MONTA O PROMPT FINAL ----
+  // Estrutura: gancho → mostrar produto → falar sobre ele → CTA frete grátis
+  const gancho = eMasculino
+    ? `Cara, você precisa ver esse look agora!`
+    : `Meninas, olha o que chegou pra mim!`;
+
+  const sobreProduto = eMasculino
+    ? `talks about the product naturally while showing it: how it fits, the quality, why he likes it`
+    : `talks about the product naturally while showing it: the color, the quality, how it fits her body, why she loves it`;
+
+  const cta = eMasculino
+    ? `Cara, esse produto pra mim tá com frete grátis — pra você também pode estar. Clica no carrinho pra ver se o seu tá. Não perde essa chance!`
+    : `Meninas, esse produto pra mim tá com frete grátis — pra você também pode estar. Clica no carrinho pra ver se o seu tá. Não perde essa chance!`;
+
   return (
     `Vertical 9:16 TikTok video. NO watermark anywhere in the video.\n` +
-    `Person: ${modelo}.\n` +
+    `Person: ${modelo}. Personality: naturally cheerful, energetic but human — NOT a TV presenter, like a real person excited about a purchase.\n` +
     `Product being shown: "${produto}". Show THIS exact product — exact color, exact cut, exact details. Do NOT change or invent any detail.\n` +
-    `Scene: ${cena}. Natural warm bedroom lighting.\n` +
-    `Action: ${acao}. Movement is casual and natural, like a real person filming themselves — slight hand tremor on phone, natural breathing, relaxed posture. NOT a photoshoot.\n` +
-    `Text overlay at top of screen, bold white letters with shadow: "${pov}"\n` +
-    `Person speaks once in Brazilian Portuguese: "${fala}" — casual, spontaneous tone, NOT an ad.\n` +
-    `Audio: soft ambient room sound. No music. Portuguese speech only.\n` +
-    `CRITICAL: NO watermark, NO logo, NO brand text anywhere.`
+    `\n` +
+    `VIDEO STRUCTURE (3 clear parts):\n` +
+    `PART 1 — HOOK (first 2 seconds): Person looks directly at camera with excitement and says: "${gancho}" — eyes wide, genuine reaction, grabs attention immediately.\n` +
+    `PART 2 — SHOW & TELL (middle): ${cena}. Action: ${acao}. While showing the product, ${sobreProduto}. Movement is casual and natural, slight hand tremor on phone, real breathing, relaxed posture. NOT a photoshoot. Talks naturally in Brazilian Portuguese about the product.\n` +
+    `PART 3 — CALL TO ACTION (last 3 seconds): Person looks back at camera, smiles warmly and says naturally in Brazilian Portuguese: "${cta}"\n` +
+    `\n` +
+    `Text overlay at top of screen throughout video, bold white letters with black shadow: "${pov}"\n` +
+    `Speech: ALL in Brazilian Portuguese — casual, spontaneous, like texting a friend, NOT an advertisement voice.\n` +
+    `Audio: soft ambient room sound only. No music. Brazilian Portuguese speech only.\n` +
+    `Lighting: natural warm bedroom lighting.\n` +
+    `CRITICAL: NO watermark, NO logo, NO brand text anywhere in video.`
   );
 }
 
