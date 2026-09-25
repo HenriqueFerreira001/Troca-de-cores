@@ -1,5 +1,5 @@
 {
-  "nome": "Embu das Artes - 20 OS (comparar com Zeo)",
+  "nome": "Embu das Artes - 20 OS saindo da usina (mesmo início do Zeo) - menor distância",
   "cidade": "Embu das Artes",
   "uf": "SP",
   "otimizarPor": "distancia",
@@ -124,5 +124,35 @@
       "numero": "190",
       "bairro": "PQ PIRAJUSSARA"
     }
+  ],
+  "inicio": {
+    "nome": "PRF Embu Usina de Asfalto",
+    "rua": "ESTRADA VELHA DA PEDREIRA",
+    "numero": "",
+    "bairro": "PARQUE SAO LEONARDO"
+  },
+  "fim": "livre",
+  "compararNome": "Zeo",
+  "compararCom": [
+    "2634694116",
+    "2637774869",
+    "2637831880",
+    "2630022976",
+    "2637633198",
+    "2636530415",
+    "2638189537",
+    "2637093328",
+    "2634731169",
+    "2630330265",
+    "26103973657",
+    "2637140893",
+    "2637234505",
+    "2637058570",
+    "2638307311",
+    "2638186749",
+    "2636628546",
+    "2638189662",
+    "2637553857",
+    "2637569115"
   ]
 }

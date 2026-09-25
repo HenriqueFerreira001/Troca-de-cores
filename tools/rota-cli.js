@@ -11,7 +11,7 @@
  *   "cidade": "Embu das Artes", "uf": "SP",
  *   "inicio": "endereço de saída" (opcional),
  *   "fim": "voltar" | "livre" | "endereço" (opcional, padrão "livre" sem início e "voltar" com início),
- *   "otimizarPor": "tempo" | "distancia" (opcional, padrão "tempo"),
+ *   "otimizarPor": "distancia" | "tempo" (opcional, padrão "distancia"),
  *   "paradas": [{ "os": "123", "rua": "RUA X", "numero": "10", "bairro": "JD Y", "prioridade": false }]
  * }
  */
@@ -131,10 +131,17 @@ async function main() {
         const g = await geocode(p, cfg.cidade, cfg.uf, city).catch(() => null);
         stops.push({ ...p, geo: g });
     }
+    // Início: { rua, numero, bairro } ou texto. Procura no IBGE e depois no mapa gratuito.
     let start = null;
     if (cfg.inicio) {
-        const d = await nominatim({ q: `${expand(cfg.inicio)}, ${cfg.cidade}, ${cfg.uf}` });
-        if (d.length) start = { lat: +d[0].lat, lng: +d[0].lon, label: cfg.inicio };
+        const ini = typeof cfg.inicio === 'string' ? { ...Enderecos.parse(cfg.inicio), texto: cfg.inicio } : { street: cfg.inicio.rua, number: cfg.inicio.numero, bairro: cfg.inicio.bairro, texto: cfg.inicio.nome || cfg.inicio.rua };
+        const r = city ? Enderecos.lookup(city, ini) : null;
+        if (r && r.lat != null) start = { lat: r.lat, lng: r.lng, label: `${ini.texto} (${r.found})` };
+        else {
+            const d = await nominatim({ q: `${expand(ini.texto)}, ${cfg.cidade}, ${cfg.uf}` });
+            if (d.length) start = { lat: +d[0].lat, lng: +d[0].lon, label: ini.texto };
+        }
+        if (!start) log(`**Início não encontrado:** ${ini.texto}`);
     }
 
     const missing = stops.filter(s => !s.geo);
@@ -155,7 +162,7 @@ async function main() {
 
     const points = [...(start ? [start] : []), ...ok.map(s => s.geo), ...(end ? [end] : [])];
     const m = await osrmTable(points);
-    let matrix = cfg.otimizarPor === 'distancia' ? m.dist : m.dur;
+    let matrix = cfg.otimizarPor === 'tempo' ? m.dur : m.dist;
     // Sem início: ponto virtual com custo zero até qualquer parada (igual ao app).
     const off = start ? 0 : 1;
     if (!start) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(r => [1e12, ...r]));
@@ -173,7 +180,7 @@ async function main() {
     }
 
     log(`Início: ${start ? start.label : 'livre (começa pela parada mais conveniente)'} · Fim: ${fimModo}`);
-    log(`Otimizado por: ${cfg.otimizarPor === 'distancia' ? 'distância' : 'tempo'} · ${ok.length} paradas`);
+    log(`Otimizado por: ${cfg.otimizarPor === 'tempo' ? 'tempo' : 'distância'} · ${ok.length} paradas`);
     log(`**Total dirigindo: ${km(totD)} · ${min(totT)}**`);
     log();
     log('| # | OS | Endereço | Trecho | Localização encontrada |');
@@ -187,6 +194,29 @@ async function main() {
         prev = idx;
     });
     log();
+
+    // Mede a ordem de outro app (lista de OS) com a mesma régua: mesmas posições e mesmas ruas.
+    if (Array.isArray(cfg.compararCom) && cfg.compararCom.length) {
+        const idxDaOs = new Map(ok.map((s, i) => [String(s.os), i + 1]));
+        const outra = cfg.compararCom.map(os => idxDaOs.get(String(os))).filter(Boolean);
+        const seq2 = [...(start ? [0] : []), ...outra, ...(end ? [endIdx] : [])];
+        let d2 = 0, t2 = 0;
+        for (let i = 0; i < seq2.length - 1; i++) {
+            d2 += m.dist[real(seq2[i])][real(seq2[i + 1])];
+            t2 += m.dur[real(seq2[i])][real(seq2[i + 1])];
+        }
+        const nome = cfg.compararNome || 'outro app';
+        log(`### Comparação com ${nome} (mesmo mapa, mesmas posições)`);
+        log(`- Rota Certa: **${km(totD)} · ${min(totT)}**`);
+        log(`- ${nome}: **${km(d2)} · ${min(t2)}**`);
+        const dif = d2 - totD;
+        log(`- Diferença: ${dif >= 0 ? 'Rota Certa ' + km(dif) + ' mais curta' : nome + ' ' + km(-dif) + ' mais curta'} · ${min(Math.abs(t2 - totT))} de diferença no tempo`);
+        const nossa = order.map(i => ok[i - 1].os);
+        const difs = outra.map((i, n) => (ok[i - 1].os === nossa[n] ? null : `${n + 1}: ${nome} ${ok[i - 1].rua} × Rota Certa ${ok[order[n] - 1].rua}`)).filter(Boolean);
+        log(`- Posições iguais: ${outra.length - difs.length} de ${outra.length}`);
+        difs.forEach(x => log(`  - ${x}`));
+        log();
+    }
     console.log(out.join('\n'));
 }
 
