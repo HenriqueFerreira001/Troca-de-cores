@@ -372,14 +372,17 @@
             const c = (await this.list()).find(x => Enderecos.nucleo(x.cidade) === alvo);
             if (!c) return null;
             if (!this.loaded[c.cod]) {
-                this.loaded[c.cod] = fetchJSON(`dados/cnefe/${c.cod}.json`).then(d => Enderecos.prepare(d)).catch(() => null);
+                // meta.json é pequeno; cada pedaço (letra) só é baixado quando uma rua precisa dele.
+                this.loaded[c.cod] = fetchJSON(`dados/cnefe/${c.cod}/meta.json`)
+                    .then(meta => Enderecos.prepare(meta, (letra) => fetchJSON(`dados/cnefe/${c.cod}/${letra}.json`).catch(() => null)))
+                    .catch(() => null);
             }
             return this.loaded[c.cod];
         },
         async find(parts, cityName) {
             const city = await this.forCity(cityName);
             if (!city) return null;
-            const r = Enderecos.lookup(city, parts);
+            const r = await Enderecos.find(city, parts).catch(() => null);
             if (!r || r.ambiguous || r.lat == null) return null;
             return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: r.found, source: 'IBGE' };
         },

@@ -34,7 +34,9 @@ jobs:
             curl -sSL -o "tmp/$COD.zip" "$BASE/$PASTA$ARQ"
             unzip -o -q "tmp/$COD.zip" -d "tmp/$COD"
             CSV=$(find "tmp/$COD" -iname '*.csv' | head -1)
-            node tools/cnefe-indice.js "$CSV" "$COD" "$NOME" "$UF" "dados/cnefe/$COD.json"
+            rm -f "dados/cnefe/$COD.json"
+            node tools/cnefe-indice.js "$CSV" "$COD" "$NOME" "$UF" "dados/cnefe/$COD"
+            rm -rf "tmp/$COD" "tmp/$COD.zip"
           done < dados/cidades.txt
           # lista de cidades disponível para o app
           node -e "
@@ -45,7 +47,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dados/cnefe dados/cidades.json
+          git add -A dados/cnefe dados/cidades.json
           git diff --cached --quiet && echo "Sem mudanças" && exit 0
           git commit -m "Atualiza endereços do IBGE (CNEFE)"
           git push
