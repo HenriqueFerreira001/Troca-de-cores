@@ -14,7 +14,7 @@
 (function (root) {
     'use strict';
 
-    const EXACT_LIMIT = 13;
+    const EXACT_LIMIT = 16;
 
     // Custo de percorrer a sequência de nós "path" (índices da matriz).
     function pathCost(matrix, path) {

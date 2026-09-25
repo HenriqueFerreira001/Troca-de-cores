@@ -25,7 +25,7 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 
 ### Precisão
 
-- **Até 13 paradas** o app testa matematicamente todas as possibilidades e garante a **melhor ordem possível**.
+- **Até 16 paradas** o app testa matematicamente todas as possibilidades e garante a **melhor ordem possível**.
 - **Acima disso** usa um método de otimização que, nos testes, chega ao resultado ótimo ou a menos de 1% dele (em 1 a 4 segundos).
 - As distâncias são **pelas ruas de verdade** (mão de rua incluída), não em linha reta.
 - O maior risco de erro é o **endereço ser achado no lugar errado**. Por isso o app avisa

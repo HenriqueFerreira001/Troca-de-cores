@@ -244,9 +244,48 @@
             }
         },
 
+        // Abreviações comuns em planilhas de serviço (JD, PQ, AV...) atrapalham a busca.
+        expand(text) {
+            const map = [
+                [/\bAV\.?(?=\s)/gi, 'Avenida'], [/\bR\.(?=\s)/gi, 'Rua'], [/\bAL\.?(?=\s)/gi, 'Alameda'],
+                [/\bTV\.?(?=\s)/gi, 'Travessa'], [/\bPCA\.?(?=\s)|\bPÇA\.?(?=\s)/gi, 'Praça'], [/\bEST\.?(?=\s)/gi, 'Estrada'],
+                [/\bJD\.?(?=\s)/gi, 'Jardim'], [/\bJARD\.?(?=\s)/gi, 'Jardim'], [/\bPQ\.?(?=\s)/gi, 'Parque'], [/\bVL\.?(?=\s)/gi, 'Vila'],
+                [/\bCH\.?(?=\s)/gi, 'Chácara'], [/\bCJ\.?(?=\s)/gi, 'Conjunto'], [/\bRES\.?(?=\s)/gi, 'Residencial'],
+                [/\bNSA\.?\s+SRA\.?(?=\s)/gi, 'Nossa Senhora'], [/\bN\.?\s?SRA\.?(?=\s)/gi, 'Nossa Senhora'],
+                [/\bSTA\.?(?=\s)/gi, 'Santa'], [/\bSTO\.?(?=\s)/gi, 'Santo'], [/\bSAO(?=\s)/gi, 'São'],
+                [/\bPROF\.?(?=\s)/gi, 'Professor'], [/\bPROFA\.?(?=\s)/gi, 'Professora'], [/\bDR\.?(?=\s)/gi, 'Doutor'],
+                [/\bENG\.?(?=\s)/gi, 'Engenheiro'], [/\bCEL\.?(?=\s)/gi, 'Coronel'], [/\bGAL\.?(?=\s)/gi, 'General'],
+            ];
+            let t = ' ' + text + ' ';
+            for (const [re, full] of map) t = t.replace(re, full);
+            return t.trim();
+        },
+
+        // Busca uma parada vinda de planilha: rua, número, bairro e cidade separados.
+        // Tenta do mais preciso para o menos preciso.
+        async searchParts(p) {
+            const street = this.expand(p.street || '');
+            const bairro = this.expand(p.bairro || '');
+            const city = p.city || '';
+            const tries = [];
+            if (street && city) tries.push({ street: `${p.number || ''} ${street}`.trim(), city, state: p.uf || '' });
+            tries.push([street, p.number, bairro, city, p.uf].filter(Boolean).join(', '));
+            if (bairro) tries.push([street, p.number, city, p.uf].filter(Boolean).join(', '));
+            for (const t of tries) {
+                const r = await this.search(t, true).catch(() => null);
+                if (r && r.precise !== false) return r;
+                if (r && !tries.best) tries.best = r;
+            }
+            if (!tries.best && p.cep) return this.search(p.cep).catch(() => null);
+            return tries.best || null;
+        },
+
         // Busca precisa (usada para listas e ao apertar Enter). Respeita 1 consulta/s do Nominatim.
+        // q pode ser texto ou uma busca estruturada { street, city, state }.
         _last: 0,
-        async search(q) {
+        async search(q, expanded) {
+            if (typeof q === 'object') return this.searchStructured(q);
+            if (!expanded) q = this.expand(q);
             const coords = this.parseCoords(q);
             if (coords) return { addr: q.trim(), ...coords, precise: true };
 
@@ -272,6 +311,22 @@
                 precise: precise || !hasNumberTyped,
                 found: d.display_name,
             };
+        },
+
+        async searchStructured(q) {
+            const wait = 1100 - (Date.now() - this._last);
+            if (wait > 0) await sleep(wait);
+            this._last = Date.now();
+            let url = `${NOMINATIM}/search?format=jsonv2&addressdetails=1&limit=1&accept-language=pt-BR`
+                + `&street=${encodeURIComponent(q.street)}&city=${encodeURIComponent(q.city)}`;
+            if (q.state) url += `&state=${encodeURIComponent(q.state)}`;
+            if (state.settings.country) url += `&countrycodes=${state.settings.country}`;
+            const data = await fetchJSON(url);
+            if (!data.length) return null;
+            const d = data[0];
+            const hasNumber = /\d/.test(q.street);
+            const precise = !!(d.address && d.address.house_number) || ['house', 'building'].includes(d.addresstype);
+            return { lat: parseFloat(d.lat), lng: parseFloat(d.lon), precise: precise || !hasNumber, found: d.display_name };
         },
 
         async searchCEP(cep, original) {
@@ -627,10 +682,10 @@
             let res = null;
             if (it.lat != null && it.lng != null) res = { lat: it.lat, lng: it.lng, precise: true };
             else {
-                try { res = await geo.search(it.addr); } catch (e) { res = null; }
+                try { res = it.parts ? await geo.searchParts(it.parts) : await geo.search(it.search || it.addr); } catch (e) { res = null; }
             }
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;
-            addStop({ ...it, addr: it.addr || res?.addr, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
+            addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
         }
         busy(false);
         render();
@@ -797,8 +852,14 @@
     function rowsToItems(rows) {
         if (!rows.length) return [];
         const header = rows[0].map(norm);
-        const find = (...names) => header.findIndex(h => names.some(n => h === n || h.includes(n)));
+        // Primeiro procura nome exato; nomes curtos (rua, lat, uf...) só valem exatos.
+        const find = (...names) => {
+            const exact = header.findIndex(h => names.includes(h));
+            if (exact >= 0) return exact;
+            return header.findIndex(h => names.some(n => n.length >= 4 && h.includes(n)));
+        };
         const col = {
+            os: find('os', 'o.s.', 'o.s', 'ordem de servico', 'ordem servico', 'pedido', 'protocolo', 'chamado'),
             addr: find('endereco', 'address', 'logradouro', 'rua', 'local'),
             num: find('numero', 'nº', 'n°', 'number'),
             comp: find('complemento'),
@@ -817,17 +878,56 @@
         const get = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : '');
         const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : null; };
 
-        return body.map(row => {
+        const items = body.map(row => {
             if (!hasHeader) return { addr: row.filter(Boolean).join(', ') };
-            let addr = get(row, col.addr);
-            if (col.num >= 0 && get(row, col.num) && !addr.includes(get(row, col.num))) addr += ', ' + get(row, col.num);
-            addr = [addr, get(row, col.bairro), get(row, col.city), get(row, col.uf)].filter(Boolean).join(', ');
-            if (!addr && get(row, col.cep)) addr = get(row, col.cep);
+            const street = get(row, col.addr);
+            let number = get(row, col.num);
+            if (number && street.includes(number)) number = '';
+            const parts = { street, number, bairro: get(row, col.bairro), city: get(row, col.city), uf: get(row, col.uf), cep: get(row, col.cep) };
+            let addr = [[street, number].filter(Boolean).join(', '), parts.bairro, parts.city, parts.uf].filter(Boolean).join(' - ');
+            if (!addr && parts.cep) addr = parts.cep;
             const lat = col.lat >= 0 ? num(row[col.lat]) : null;
             const lng = col.lng >= 0 ? num(row[col.lng]) : null;
-            const noteParts = [get(row, col.name), get(row, col.comp), get(row, col.note)].filter(Boolean);
-            return { addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng, note: noteParts.join(' — '), phone: get(row, col.phone) };
+            const noteParts = [get(row, col.os) ? 'OS ' + get(row, col.os) : '', get(row, col.name), get(row, col.comp), get(row, col.note)].filter(Boolean);
+            return {
+                addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng,
+                parts: street ? parts : null,
+                note: noteParts.join(' — '), phone: get(row, col.phone),
+            };
         }).filter(it => it.addr);
+        items.hasCity = col.city >= 0;
+        return items;
+    }
+
+    // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
+    async function askCity(items, title) {
+        const html = `<p>Encontrei <b>${items.length}</b> endereço(s). Primeiros:</p>
+            <ul>${items.slice(0, 5).map(i => `<li>${esc(i.addr)}</li>`).join('')}</ul>
+            ${items.hasCity ? '' : `<label>Cidade destes endereços (a planilha não tem cidade)</label>
+            <input type="text" id="imp-city" placeholder="Ex.: Embu das Artes, SP" value="${esc(state.settings.defaultCity || '')}">
+            <p class="muted">Sem a cidade, uma rua com o mesmo nome em outra cidade pode ser escolhida.</p>`}`;
+        let city = '';
+        const ok = await openDialog(title, html, [
+            { label: 'Cancelar', value: false },
+            {
+                label: 'Importar', cls: 'primary', value: true, onClick: () => {
+                    if (items.hasCity) return;
+                    city = $('#imp-city').value.trim();
+                    if (!city) { toast('Informe a cidade.'); return false; }
+                },
+            },
+        ]);
+        if (!ok) return null;
+        if (city) {
+            state.settings.defaultCity = city;
+            save();
+            const [c, uf] = city.split(/\s*[,/-]\s*(?=[A-Za-z]{2}$)/);
+            items.forEach(it => {
+                if (it.parts) { if (!it.parts.city) { it.parts.city = c; it.parts.uf = it.parts.uf || uf || ''; } }
+                else if (it.lat == null) it.search = `${it.addr}, ${city}`;
+            });
+        }
+        return items;
     }
 
     async function importFile(file) {
@@ -847,8 +947,7 @@
             }
             const items = rowsToItems(rows);
             if (!items.length) return toast('Não achei endereços na planilha.');
-            const ok = await confirmDialog('Importar planilha', `<p>Encontrei <b>${items.length}</b> endereço(s). Primeiros:</p><ul>${items.slice(0, 5).map(i => `<li>${esc(i.addr)}</li>`).join('')}</ul>`, 'Importar');
-            if (ok) addMany(items);
+            if (await askCity(items, 'Importar planilha')) addMany(items);
         } catch (e) {
             busy(false);
             toast('Erro ao ler o arquivo: ' + e.message, 5000);
@@ -931,7 +1030,7 @@
             {
                 label: 'Adicionar', cls: 'primary', onClick: () => {
                     const items = parseLines($('#paste-text').value);
-                    setTimeout(() => addMany(items), 50);
+                    setTimeout(async () => { if (await askCity(items, 'Adicionar lista')) addMany(items); }, 50);
                 },
             },
         ]);
