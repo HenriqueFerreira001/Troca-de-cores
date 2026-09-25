@@ -3,34 +3,113 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="styles.css">
-    <title> troca de cores</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1558d6">
+    <meta name="description" content="Planejador de rotas: organiza as paradas na melhor ordem pelas ruas reais.">
+    <title>Rota Certa</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" href="app.css">
 </head>
 
 <body>
-    <main>
-        <h1>Dev clube Troca Cor</h1>
-        <button onclick="trocacor('red')">vermelho</button>
-        <button onclick="trocacor('green')">verde</button>
-        <button onclick="trocacor('blue')">azul</button>
-        <button onclick="trocacor('yellow')">amarelo</button>
-        <button onclick="coraleatoria()">cor aleatória</button>
-    
-        <br />
-        <input placeholder="nome da cor ou #hex" type="text" class="input-cor">
-        <button onclick="aplicarcorPersonalizada()">aplicar cor </button>
-        <input type="color" onchange="trocacor(this.value)">
-        <br />
+    <header class="topbar">
+        <button class="icon-btn" id="btn-routes" title="Minhas rotas" aria-label="Minhas rotas">☰</button>
+        <input id="route-name" class="route-name" aria-label="Nome da rota" placeholder="Nome da rota">
+        <button class="icon-btn" id="btn-share" title="Enviar rota" aria-label="Enviar rota">⤴</button>
+        <button class="icon-btn" id="btn-settings" title="Configurações" aria-label="Configurações">⚙</button>
+    </header>
 
-        <label>
-            escolher imagem
-            <Input type="file" accept="img/*" onchange="escolherimagem(this.files [0])">
-        </label>
-    </main>
+    <div class="layout">
+        <section class="map-wrap">
+            <div id="map"></div>
+            <div id="map-hint" class="map-hint hidden">Toque no mapa para adicionar a parada <button id="map-hint-cancel">Cancelar</button></div>
+        </section>
 
+        <section class="panel">
+            <!-- Início e fim -->
+            <div class="endpoints">
+                <div class="endpoint">
+                    <span class="pin pin-start">I</span>
+                    <div class="endpoint-body">
+                        <small>Início</small>
+                        <div id="start-label" class="endpoint-label">Não definido</div>
+                    </div>
+                    <button class="small-btn" id="btn-start-gps" title="Usar minha localização">📍 GPS</button>
+                    <button class="small-btn" id="btn-start-edit">Mudar</button>
+                </div>
+                <div class="endpoint">
+                    <span class="pin pin-end">F</span>
+                    <div class="endpoint-body">
+                        <small>Fim</small>
+                        <select id="end-mode" aria-label="Onde terminar">
+                            <option value="return">Voltar ao início</option>
+                            <option value="free">Terminar na última parada</option>
+                            <option value="custom">Terminar em outro endereço</option>
+                        </select>
+                        <div id="end-label" class="endpoint-label hidden"></div>
+                    </div>
+                    <button class="small-btn hidden" id="btn-end-edit">Mudar</button>
+                </div>
+            </div>
 
+            <!-- Adicionar paradas -->
+            <div class="search-box">
+                <div class="search-row">
+                    <input id="search" type="search" autocomplete="off" placeholder="Digite endereço, CEP ou coordenadas" aria-label="Adicionar parada">
+                    <button class="icon-btn" id="btn-voice" title="Falar o endereço" aria-label="Falar o endereço">🎤</button>
+                </div>
+                <div id="search-target" class="search-target hidden">Definindo: <b></b> <button id="search-target-cancel">cancelar</button></div>
+                <ul id="suggestions" class="suggestions hidden"></ul>
+                <div class="add-tools">
+                    <button class="chip" id="btn-paste">📋 Colar lista</button>
+                    <button class="chip" id="btn-import">📄 Planilha</button>
+                    <button class="chip" id="btn-scan">📷 Foto da lista</button>
+                    <button class="chip" id="btn-map-add">🗺 No mapa</button>
+                </div>
+                <input type="file" id="file-import" accept=".xlsx,.xls,.csv,.txt" hidden>
+                <input type="file" id="file-scan" accept="image/*" capture="environment" hidden>
+            </div>
+
+            <!-- Resumo e otimizar -->
+            <div id="summary" class="summary"></div>
+            <div id="warnings"></div>
+            <div class="actions">
+                <button class="primary" id="btn-optimize">⚡ Otimizar rota</button>
+                <button class="secondary" id="btn-reorder" title="Mudar a ordem na mão">↕ Ordem manual</button>
+            </div>
+
+            <!-- Próxima parada (durante a execução) -->
+            <div id="next-card" class="next-card hidden"></div>
+
+            <!-- Lista -->
+            <ol id="stops" class="stops"></ol>
+            <p id="empty" class="empty">Nenhuma parada ainda. Digite um endereço acima, cole uma lista ou importe uma planilha.</p>
+
+            <div class="footer-actions">
+                <button class="secondary" id="btn-export">⬇ Exportar planilha</button>
+                <button class="secondary danger" id="btn-clear">Limpar paradas</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Janela genérica -->
+    <dialog id="dialog">
+        <form method="dialog" id="dialog-form">
+            <h2 id="dialog-title"></h2>
+            <div id="dialog-body"></div>
+            <div class="dialog-actions" id="dialog-actions"></div>
+        </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <div id="busy" class="busy hidden"><div class="busy-box"><div class="spinner"></div><div id="busy-text">Carregando…</div><div class="progress"><div id="busy-bar"></div></div></div></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="solver.js"></script>
+    <script src="app.js"></script>
 </body>
-<script src="./scripts.js"></script>
 
 </html>
