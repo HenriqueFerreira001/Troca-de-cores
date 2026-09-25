@@ -104,68 +104,85 @@
         const t = tipo(p.street);
         const numero = parseInt(String(p.number || '').replace(/\D/g, ''), 10);
         const bairro = p.bairro ? nucleo(p.bairro) : '';
+        const bairroNota = (b) => (!bairro ? 0 : (b === bairro ? 1 : similar(b, bairro) >= 0.8 ? 0.8 : 0));
 
-        // Junta os endereços de todas as ruas candidatas, dando nota para tipo e bairro.
-        let pontos = [];
+        // 1) Escolhe a rua: mesmo tipo (Rua/Avenida) e que passe pelo bairro informado.
+        let melhor = null;
         for (const nome of c.nomes) {
-            const tipoOk = !t || tipo(nome) === t;
-            for (const e of city.ruas[nome]) {
-                const b = city._bairrosNorm[e[3]] || '';
-                const bairroNota = !bairro ? 0.5 : (b === bairro ? 1 : similar(b, bairro) >= 0.8 ? 0.8 : 0);
-                pontos.push({ n: e[0], lat: e[1] / 1e5, lng: e[2] / 1e5, nome, bairro: city.bairros[e[3]], nota: bairroNota + (tipoOk ? 0.5 : 0) });
-            }
+            const pts = city.ruas[nome].map(e => ({ n: e[0], lat: e[1] / 1e5, lng: e[2] / 1e5, nome, bairro: city.bairros[e[3]], bn: bairroNota(city._bairrosNorm[e[3]] || '') }));
+            const nota = Math.max(...pts.map(x => x.bn)) * 2 + (!t || tipo(nome) === t ? 1 : 0) + pts.length / 1e6;
+            if (!melhor || nota > melhor.nota) melhor = { nome, pts, nota };
         }
-        if (!pontos.length) return null;
+        let pontos = melhor.pts;
 
-        // Mesma rua pode existir em bairros diferentes: fica com o grupo de melhor nota.
-        const melhorNota = Math.max(...pontos.map(x => x.nota));
-        pontos = pontos.filter(x => x.nota === melhorNota);
-        // Se o bairro informado não bateu e a rua existe em lugares distantes, é ambíguo.
-        if (bairro && melhorNota < 1 && espalhado(pontos)) {
-            return { ambiguous: true, found: `${pontos[0].nome} (existe em mais de um bairro)` };
+        // 2) Ruas com o mesmo nome em lugares diferentes da cidade: fica só com o trecho
+        //    que passa pelo bairro informado (e a continuação dele nos bairros vizinhos).
+        const ancoras = pontos.filter(x => x.bn > 0);
+        if (ancoras.length) {
+            pontos = pontos.filter(x => x.bn > 0 || ancoras.some(a => Math.abs(a.lat - x.lat) < 0.012 && Math.abs(a.lng - x.lng) < 0.012));
+        } else if (bairro && espalhado(pontos)) {
+            return { ambiguous: true, found: `${titulo(melhor.nome)} (existe em mais de um lugar da cidade; confira o bairro)` };
         }
 
         const label = (x) => `${titulo(x.nome)}, ${x.n || 's/n'} - ${titulo(x.bairro)}`;
         if (!isFinite(numero)) {
-            const mid = pontos[Math.floor(pontos.length / 2)];
-            return { lat: mid.lat, lng: mid.lng, exact: false, found: `${titulo(mid.nome)} - ${titulo(mid.bairro)} (sem número)` };
+            const ref = ancoras.length ? ancoras : pontos;
+            const mid = ref[Math.floor(ref.length / 2)];
+            return { lat: mid.lat, lng: mid.lng, exact: false, good: false, found: `${titulo(mid.nome)} - ${titulo(mid.bairro)} (sem número)` };
         }
 
-        const exatos = pontos.filter(x => x.n === numero);
+        // 3) Número exato cadastrado no IBGE.
+        let exatos = pontos.filter(x => x.n === numero);
         if (exatos.length) {
-            const lat = exatos.reduce((a, x) => a + x.lat, 0) / exatos.length;
-            const lng = exatos.reduce((a, x) => a + x.lng, 0) / exatos.length;
-            return { lat, lng, exact: true, found: label(exatos[0]), score: c.score };
+            // mesmo número em dois trechos: prefere o do bairro informado
+            const noBairro = exatos.filter(x => x.bn > 0);
+            if (noBairro.length) exatos = noBairro;
+            const x = exatos[0];
+            return { lat: x.lat, lng: x.lng, exact: true, good: true, found: label(x), score: c.score };
         }
 
-        // Número não cadastrado: estima entre o vizinho de baixo e o de cima, do mesmo lado da rua.
-        const lado = pontos.filter(x => x.n && x.n % 2 === numero % 2);
-        const base = lado.length >= 2 ? lado : pontos.filter(x => x.n);
-        if (!base.length) return null;
-        base.sort((a, b) => a.n - b.n);
-        let lo = null, hi = null;
-        for (const x of base) {
-            if (x.n < numero) lo = x;
-            else if (x.n > numero && !hi) hi = x;
+        // 4) Número não cadastrado: estima entre o vizinho de baixo e o de cima
+        //    (mesmo lado da rua quando possível). Se o trecho do bairro não tiver
+        //    vizinhos próximos, tenta a rua inteira.
+        let est = estimar(pontos, numero);
+        if ((!est || !est.good) && pontos !== melhor.pts) {
+            const inteira = estimar(melhor.pts, numero);
+            if (inteira && (!est || inteira.perto < est.perto)) est = inteira;
         }
-        let lat, lng, perto;
-        if (lo && hi) {
-            const f = (numero - lo.n) / (hi.n - lo.n);
-            lat = lo.lat + (hi.lat - lo.lat) * f;
-            lng = lo.lng + (hi.lng - lo.lng) * f;
-            perto = Math.min(numero - lo.n, hi.n - numero);
-        } else {
-            const x = lo || hi;
-            lat = x.lat; lng = x.lng;
-            perto = Math.abs(x.n - numero);
-        }
+        if (!est) return null;
+        const { lo, hi } = est;
         return {
-            lat, lng, exact: false,
-            // até ~40 números de distância do vizinho cadastrado a estimativa é boa
-            good: perto <= 40,
-            found: `${titulo(base[0].nome)}, ~${numero} (entre ${lo ? lo.n : '—'} e ${hi ? hi.n : '—'}) - ${titulo((lo || hi).bairro)}`,
+            lat: est.lat, lng: est.lng, exact: false,
+            // até ~40 números do vizinho cadastrado, a estimativa cai na mesma quadra
+            good: est.good,
+            found: `${titulo(melhor.nome)}, ~${numero} (entre ${lo ? lo.n : '—'} e ${hi ? hi.n : '—'}) - ${titulo((lo || hi).bairro)}`,
             score: c.score,
         };
+    }
+
+    function estimar(pontos, numero) {
+        const comNum = pontos.filter(x => x.n > 0).sort((a, b) => a.n - b.n);
+        if (!comNum.length) return null;
+        const entre = (lista) => {
+            let lo = null, hi = null;
+            for (const x of lista) {
+                if (x.n < numero) lo = x;
+                else if (x.n > numero && !hi) hi = x;
+            }
+            return { lo, hi };
+        };
+        const gap = (r) => (r.lo && r.hi ? Math.min(numero - r.lo.n, r.hi.n - numero) : Infinity);
+        const mesmoLado = entre(comNum.filter(x => x.n % 2 === numero % 2));
+        const todos = entre(comNum);
+        const { lo, hi } = gap(mesmoLado) <= 40 || gap(mesmoLado) <= gap(todos) ? mesmoLado : todos;
+        if (lo && hi) {
+            const f = (numero - lo.n) / (hi.n - lo.n);
+            const perto = Math.min(numero - lo.n, hi.n - numero);
+            return { lat: lo.lat + (hi.lat - lo.lat) * f, lng: lo.lng + (hi.lng - lo.lng) * f, lo, hi, perto, good: perto <= 40 };
+        }
+        // além do último número cadastrado: não dá para estimar bem
+        const x = lo || hi;
+        return { lat: x.lat, lng: x.lng, lo, hi, perto: Infinity, good: false };
     }
 
     function espalhado(pontos) {

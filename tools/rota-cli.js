@@ -20,6 +20,17 @@
 const fs = require('fs');
 const path = require('path');
 const Solver = require('../solver.js');
+const Enderecos = require('../enderecos.js');
+
+// Índice do IBGE da cidade, se existir em dados/cnefe.
+function ibgeCity(nome) {
+    try {
+        const lista = JSON.parse(fs.readFileSync(path.join(__dirname, '../dados/cidades.json'), 'utf8'));
+        const c = lista.find(x => Enderecos.nucleo(x.cidade) === Enderecos.nucleo(nome));
+        if (!c) return null;
+        return Enderecos.prepare(JSON.parse(fs.readFileSync(path.join(__dirname, `../dados/cnefe/${c.cod}.json`), 'utf8')));
+    } catch (e) { return null; }
+}
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const OSRM = 'https://router.project-osrm.org';
@@ -58,8 +69,15 @@ async function nominatim(params) {
     throw new Error('Nominatim não respondeu');
 }
 
-// Mesma estratégia do app: rua+número+cidade; depois texto com bairro; depois sem bairro.
-async function geocode(p, cidade, uf) {
+// Mesma estratégia do app: primeiro o IBGE (número exato); depois o mapa gratuito
+// (rua+número+cidade; texto com bairro; sem bairro).
+async function geocode(p, cidade, uf, city) {
+    if (city) {
+        const r = Enderecos.lookup(city, { street: p.rua, number: p.numero, bairro: p.bairro });
+        if (r && !r.ambiguous && r.lat != null) {
+            return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+        }
+    }
     const street = expand(p.rua);
     const bairro = expand(p.bairro || '');
     const tries = [
@@ -105,9 +123,12 @@ async function main() {
     log(`## ${cfg.nome || path.basename(file)}`);
     log();
 
+    const city = ibgeCity(cfg.cidade);
+    log(city ? `Endereços: IBGE (CNEFE 2022) + mapa gratuito quando faltar` : 'Endereços: mapa gratuito (cidade sem dados do IBGE)');
+    log();
     const stops = [];
     for (const p of cfg.paradas) {
-        const g = await geocode(p, cfg.cidade, cfg.uf).catch(() => null);
+        const g = await geocode(p, cfg.cidade, cfg.uf, city).catch(() => null);
         stops.push({ ...p, geo: g });
     }
     let start = null;
