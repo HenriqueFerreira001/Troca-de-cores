@@ -7,6 +7,8 @@ on:
     paths:
       - 'testes-rota/**'
       - 'tools/rota-cli.js'
+      - 'enderecos.js'
+      - 'dados/cnefe/**'
       - 'solver.js'
   workflow_dispatch:
 

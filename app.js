@@ -372,16 +372,25 @@
             const c = (await this.list()).find(x => Enderecos.nucleo(x.cidade) === alvo);
             if (!c) return null;
             if (!this.loaded[c.cod]) {
-                this.loaded[c.cod] = fetchJSON(`dados/cnefe/${c.cod}.json`).then(d => Enderecos.prepare(d)).catch(() => null);
+                // meta.json é pequeno; cada pedaço (letra) só é baixado quando uma rua precisa dele.
+                this.loaded[c.cod] = fetchJSON(`dados/cnefe/${c.cod}/meta.json`)
+                    .then(meta => Enderecos.prepare(meta, (letra) => fetchJSON(`dados/cnefe/${c.cod}/${letra}.json`).catch(() => null)))
+                    .catch(() => null);
             }
             return this.loaded[c.cod];
         },
         async find(parts, cityName) {
             const city = await this.forCity(cityName);
             if (!city) return null;
-            const r = Enderecos.lookup(city, parts);
+            const r = await Enderecos.find(city, parts).catch(() => null);
             if (!r || r.ambiguous || r.lat == null) return null;
             return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: r.found, source: 'IBGE' };
+        },
+        // Estimativa fraca do IBGE: tenta o mapa gratuito; se ele achar o número exato, usa; senão fica o IBGE.
+        async melhorar(ibge, buscaMapa) {
+            if (!ibge || ibge.precise) return ibge;
+            const m = await buscaMapa().catch(() => null);
+            return m && m.precise !== false ? m : ibge;
         },
     };
 
@@ -389,10 +398,12 @@
     async function locate(item) {
         const city = item.parts?.city || state.settings.defaultCity || '';
         const parts = item.parts || Enderecos.parse(item.addr);
+        const viaMapa = () => (item.parts
+            ? geo.searchParts(item.parts)
+            : geo.search(item.search || (city && !item.addr.toLowerCase().includes(city.split(',')[0].toLowerCase()) ? `${item.addr}, ${city}` : item.addr)));
         const viaIbge = await ibge.find(parts, city).catch(() => null);
-        if (viaIbge) return viaIbge;
-        if (item.parts) return geo.searchParts(item.parts);
-        return geo.search(item.search || (city && !item.addr.toLowerCase().includes(city.split(',')[0].toLowerCase()) ? `${item.addr}, ${city}` : item.addr));
+        if (viaIbge) return ibge.melhorar(viaIbge, viaMapa);
+        return viaMapa();
     }
 
     // ======================================================================

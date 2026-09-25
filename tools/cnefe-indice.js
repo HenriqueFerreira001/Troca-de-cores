@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /*
  * Gera o índice de endereços de uma cidade a partir do CSV do CNEFE (IBGE, Censo 2022).
- * Uso: node tools/cnefe-indice.js <arquivo.csv> <codigo> "<Cidade>" <UF> <saida.json>
+ * Uso: node tools/cnefe-indice.js <arquivo.csv> <codigo> "<Cidade>" <UF> <pasta-de-saida>
  *
- * Saída: { cod, cidade, uf, fonte, bairros: [...], ruas: { "RUA NOME": [[numero, lat*1e5, lng*1e5, bairroIdx], ...] } }
+ * Saída (pasta): meta.json { cod, cidade, uf, fonte, bairros, pedacos } e um
+ * <LETRA>.json por primeira letra do nome da rua: { ruas: { "RUA NOME": [[numero, lat*1e5, lng*1e5, bairroIdx], ...] } }
  */
 'use strict';
 const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
+const Enderecos = require('../enderecos.js');
 
 async function main() {
     const [csv, cod, cidade, uf, out] = process.argv.slice(2);
@@ -60,11 +63,25 @@ async function main() {
     }
     for (const r of Object.values(ruas)) r.sort((a, b) => a[0] - b[0]);
 
-    const data = { cod, cidade, uf, fonte: 'IBGE - CNEFE Censo 2022', bairros, ruas };
-    fs.writeFileSync(out, JSON.stringify(data));
+    // Divide pela primeira letra do nome da rua (sem o tipo).
+    const pedacos = {};
+    for (const [rua, lista] of Object.entries(ruas)) {
+        const letra = Enderecos.pedacoDe(rua);
+        (pedacos[letra] = pedacos[letra] || {})[rua] = lista;
+    }
+    fs.rmSync(out, { recursive: true, force: true });
+    fs.mkdirSync(out, { recursive: true });
+    let total = 0;
+    for (const [letra, r] of Object.entries(pedacos)) {
+        const f = path.join(out, letra + '.json');
+        fs.writeFileSync(f, JSON.stringify({ ruas: r }));
+        total += fs.statSync(f).size;
+    }
+    const meta = { cod, cidade, uf, fonte: 'IBGE - CNEFE Censo 2022', bairros, pedacos: Object.keys(pedacos).sort() };
+    fs.writeFileSync(path.join(out, 'meta.json'), JSON.stringify(meta));
     console.log(`Linhas: ${linhas} · sem coordenada: ${semCoord} · ruas: ${Object.keys(ruas).length} · números distintos: ${grupos.size} · bairros: ${bairros.length}`);
     console.log('Níveis de precisão (NV_GEO_COORD):', JSON.stringify(niveis));
-    console.log('Tamanho do índice:', (fs.statSync(out).size / 1e6).toFixed(2), 'MB');
+    console.log(`Índice: ${Object.keys(pedacos).length} pedaços, ${(total / 1e6).toFixed(1)} MB no total, maior pedaço ${(Math.max(...Object.keys(pedacos).map(l => fs.statSync(path.join(out, l + '.json')).size)) / 1e6).toFixed(1)} MB`);
     console.log('Alguns bairros:', bairros.slice(0, 15).join(', '));
 }
 main().catch(e => { console.error(e); process.exit(1); });

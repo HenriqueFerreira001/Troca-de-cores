@@ -1,0 +1,267 @@
+{
+  "nome": "São Paulo zona leste - 37 OS (10 com prioridade)",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "otimizarPor": "distancia",
+  "paradas": [
+    {
+      "os": "2637440618",
+      "rua": "RUA HARRY DANNENBERG",
+      "numero": "864",
+      "bairro": "ITAQUERA",
+      "prioridade": true
+    },
+    {
+      "os": "2637526082",
+      "rua": "RUA ALDEIA MARIA",
+      "numero": "495",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2635964206",
+      "rua": "AVENIDA JACU-PESSEGO-NOVATRABALHADORES",
+      "numero": "3262",
+      "bairro": "V REIS",
+      "prioridade": true
+    },
+    {
+      "os": "2637568768",
+      "rua": "RUA LAGOA TAI GRANDE",
+      "numero": "411",
+      "bairro": "ITAQUERA",
+      "prioridade": true
+    },
+    {
+      "os": "2637238333",
+      "rua": "AVENIDA DO CONTORNO",
+      "numero": "12",
+      "bairro": "ITAQUERA",
+      "prioridade": true
+    },
+    {
+      "os": "2637672553",
+      "rua": "RUA EUGENIA BRANDAO",
+      "numero": "121",
+      "bairro": "CID POPULAR",
+      "prioridade": true
+    },
+    {
+      "os": "2637666122",
+      "rua": "RUA MERCADO DE FERRO",
+      "numero": "112",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637667737",
+      "rua": "RUA CATARINA DE HORTA",
+      "numero": "54",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637664579",
+      "rua": "RUA IBITIPOCA",
+      "numero": "39",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637664904",
+      "rua": "RUA QUINTA DA TORRE",
+      "numero": "103",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637777783",
+      "rua": "AVENIDA CAITITU",
+      "numero": "82",
+      "bairro": "CID AE CARVALHO",
+      "prioridade": false
+    },
+    {
+      "os": "2637764572",
+      "rua": "RUA CACHOEIRA DO CAMPO GRANDE",
+      "numero": "133",
+      "bairro": "BARRO BRANCO 2",
+      "prioridade": false
+    },
+    {
+      "os": "2637674901",
+      "rua": "RUA ALMECEGUEIRAS",
+      "numero": "183",
+      "bairro": "V S SEBASTIAO",
+      "prioridade": false
+    },
+    {
+      "os": "2637633295",
+      "rua": "RUA JOSE MANSO",
+      "numero": "67",
+      "bairro": "V MATILDE",
+      "prioridade": false
+    },
+    {
+      "os": "2637764560",
+      "rua": "RUA ARI JOSE LIGLORI",
+      "numero": "250",
+      "bairro": "JD FERNANDES",
+      "prioridade": false
+    },
+    {
+      "os": "2637764551",
+      "rua": "RUA ARUMARANA",
+      "numero": "98",
+      "bairro": "JD ELIANE",
+      "prioridade": false
+    },
+    {
+      "os": "2637830641",
+      "rua": "AVENIDA CAITITU",
+      "numero": "1295",
+      "bairro": "CID AE CARVALHO",
+      "prioridade": false
+    },
+    {
+      "os": "2638065111",
+      "rua": "TRAVESSA ANTONIO FLAVIA",
+      "numero": "17",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2637859007",
+      "rua": "RUA JULIO MACEDO",
+      "numero": "211",
+      "bairro": "JD STA MARIA",
+      "prioridade": false
+    },
+    {
+      "os": "2637777801",
+      "rua": "RUA ANTON RUBINSTEIN",
+      "numero": "95",
+      "bairro": "JD DAS CARMELITAS",
+      "prioridade": false
+    },
+    {
+      "os": "2638126737",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "55",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126755",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "77",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126776",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "345",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126801",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "323",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126864",
+      "rua": "RUA TREVO DE BORGONHA",
+      "numero": "184",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638127059",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "133",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638126893",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "39",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638126918",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "41",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2637764563",
+      "rua": "RUA LAZARO BUENO",
+      "numero": "144",
+      "bairro": "JD JUREMA",
+      "prioridade": false
+    },
+    {
+      "os": "2638203668",
+      "rua": "RUA CAVALEIRO DE JORGE",
+      "numero": "966",
+      "bairro": "CJ HAB CASTRO ALVES",
+      "prioridade": false
+    },
+    {
+      "os": "2637865131",
+      "rua": "AVENIDA BELARMINO FERREIRA",
+      "numero": "24",
+      "bairro": "V ARICO",
+      "prioridade": false
+    },
+    {
+      "os": "2638187704",
+      "rua": "RUA DOUTOR XAVIER DE OLIVEIRA",
+      "numero": "854",
+      "bairro": "JD MARINA",
+      "prioridade": false
+    },
+    {
+      "os": "2638189879",
+      "rua": "RUA RENATO",
+      "numero": "775",
+      "bairro": "V RE",
+      "prioridade": false
+    },
+    {
+      "os": "2638194847",
+      "rua": "RUA OLEIROS",
+      "numero": "34",
+      "bairro": "V CARMOSINA",
+      "prioridade": false
+    },
+    {
+      "os": "2638196365",
+      "rua": "AVENIDA WALDEMAR CARLOS PEREIRA",
+      "numero": "999",
+      "bairro": "V MATILDE",
+      "prioridade": false
+    },
+    {
+      "os": "2638187333",
+      "rua": "AVENIDA DOUTOR FRANCISCO MUNHOZ FILHO",
+      "numero": "2111",
+      "bairro": "ITAQUERA",
+      "prioridade": false
+    },
+    {
+      "os": "2638196985",
+      "rua": "RUA AUGUSTO DE MENDONCA",
+      "numero": "538",
+      "bairro": "JD JUREMA",
+      "prioridade": false
+    }
+  ]
+}

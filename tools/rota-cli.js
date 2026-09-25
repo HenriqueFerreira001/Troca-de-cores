@@ -28,7 +28,9 @@ function ibgeCity(nome) {
         const lista = JSON.parse(fs.readFileSync(path.join(__dirname, '../dados/cidades.json'), 'utf8'));
         const c = lista.find(x => Enderecos.nucleo(x.cidade) === Enderecos.nucleo(nome));
         if (!c) return null;
-        return Enderecos.prepare(JSON.parse(fs.readFileSync(path.join(__dirname, `../dados/cnefe/${c.cod}.json`), 'utf8')));
+        const dir = path.join(__dirname, `../dados/cnefe/${c.cod}`);
+        const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+        return Enderecos.prepare(meta, (letra) => JSON.parse(fs.readFileSync(path.join(dir, letra + '.json'), 'utf8')));
     } catch (e) { return null; }
 }
 
@@ -72,10 +74,13 @@ async function nominatim(params) {
 // Mesma estratégia do app: primeiro o IBGE (número exato); depois o mapa gratuito
 // (rua+número+cidade; texto com bairro; sem bairro).
 async function geocode(p, cidade, uf, city) {
+    let ibge = null;
     if (city) {
-        const r = Enderecos.lookup(city, { street: p.rua, number: p.numero, bairro: p.bairro });
+        const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro });
         if (r && !r.ambiguous && r.lat != null) {
-            return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            // Número exato ou estimativa boa: não precisa do mapa gratuito.
+            if (ibge.precise) return ibge;
         }
     }
     const street = expand(p.rua);
@@ -85,7 +90,7 @@ async function geocode(p, cidade, uf, city) {
         { q: [street, p.numero, bairro, cidade, uf].filter(Boolean).join(', ') },
         { q: [street, p.numero, cidade, uf].filter(Boolean).join(', ') },
     ];
-    let best = null;
+    let best = ibge;
     for (const t of tries) {
         const data = await nominatim(t);
         if (!data.length) continue;
@@ -135,7 +140,7 @@ async function main() {
     let start = null;
     if (cfg.inicio) {
         const ini = typeof cfg.inicio === 'string' ? { ...Enderecos.parse(cfg.inicio), texto: cfg.inicio } : { street: cfg.inicio.rua, number: cfg.inicio.numero, bairro: cfg.inicio.bairro, texto: cfg.inicio.nome || cfg.inicio.rua };
-        const r = city ? Enderecos.lookup(city, ini) : null;
+        const r = city ? await Enderecos.find(city, ini) : null;
         if (r && r.lat != null) start = { lat: r.lat, lng: r.lng, label: `${ini.texto} (${r.found})` };
         else {
             const d = await nominatim({ q: `${expand(ini.texto)}, ${cfg.cidade}, ${cfg.uf}` });
