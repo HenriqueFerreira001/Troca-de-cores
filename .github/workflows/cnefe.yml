@@ -1,0 +1,33 @@
+# Baixa o cadastro oficial de endereços do IBGE (CNEFE, Censo 2022) das cidades
+# listadas em dados/cidades.txt e gera o índice usado pelo app para achar o número exato.
+name: Endereços IBGE
+
+on:
+  push:
+    paths:
+      - 'dados/cidades.txt'
+      - 'tools/cnefe-*.js'
+      - '.github/workflows/cnefe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cnefe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Procurar arquivos no IBGE
+        run: |
+          BASE="https://ftp.ibge.gov.br/Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/Censo_Demografico_2022/Arquivos_CNEFE/"
+          curl -sSL "$BASE" | grep -o 'href="[^"]*"' | head -50
+          echo "---- CSV"
+          curl -sSL "${BASE}CSV/" | grep -o 'href="[^"]*"' | head -50
+          echo "---- CSV/Municipio"
+          curl -sSL "${BASE}CSV/Municipio/" | grep -o 'href="[^"]*"' | head -50
+          echo "---- 35_SP (Embu)"
+          curl -sSL "${BASE}CSV/Municipio/35_SP/" | grep -o 'href="[^"]*"' | grep -i -E 'embu|3515' || true
