@@ -1,8 +1,8 @@
 // Guarda os arquivos do app para abrir mais rápido e funcionar com internet fraca.
 // Mapas, endereços e rotas continuam vindo da internet.
-const CACHE = 'rotacerta-v1';
+const CACHE = 'rotacerta-v2';
 const FILES = [
-    './', 'index.html', 'app.css', 'app.js', 'solver.js', 'manifest.json', 'icon.svg',
+    './', 'index.html', 'app.css', 'app.js', 'solver.js', 'enderecos.js', 'manifest.json', 'icon.svg',
     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
 ];

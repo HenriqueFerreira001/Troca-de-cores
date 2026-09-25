@@ -356,6 +356,46 @@
     };
 
     // ======================================================================
+    // Endereços oficiais do IBGE (número exato da casa)
+    // ======================================================================
+    const ibge = {
+        cities: null,
+        loaded: {},
+        async list() {
+            if (!this.cities) this.cities = await fetchJSON('dados/cidades.json', {}, 0).catch(() => []);
+            return this.cities;
+        },
+        // Índice da cidade ("Embu das Artes, SP"), baixado uma vez e guardado.
+        async forCity(name) {
+            if (!name || !window.Enderecos) return null;
+            const alvo = Enderecos.nucleo(String(name).split(/[,/]|\s-\s/)[0]);
+            const c = (await this.list()).find(x => Enderecos.nucleo(x.cidade) === alvo);
+            if (!c) return null;
+            if (!this.loaded[c.cod]) {
+                this.loaded[c.cod] = fetchJSON(`dados/cnefe/${c.cod}.json`).then(d => Enderecos.prepare(d)).catch(() => null);
+            }
+            return this.loaded[c.cod];
+        },
+        async find(parts, cityName) {
+            const city = await this.forCity(cityName);
+            if (!city) return null;
+            const r = Enderecos.lookup(city, parts);
+            if (!r || r.ambiguous || r.lat == null) return null;
+            return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: r.found, source: 'IBGE' };
+        },
+    };
+
+    // Melhor busca disponível: IBGE (número exato) e, se não achar, o mapa gratuito.
+    async function locate(item) {
+        const city = item.parts?.city || state.settings.defaultCity || '';
+        const parts = item.parts || Enderecos.parse(item.addr);
+        const viaIbge = await ibge.find(parts, city).catch(() => null);
+        if (viaIbge) return viaIbge;
+        if (item.parts) return geo.searchParts(item.parts);
+        return geo.search(item.search || (city && !item.addr.toLowerCase().includes(city.split(',')[0].toLowerCase()) ? `${item.addr}, ${city}` : item.addr));
+    }
+
+    // ======================================================================
     // Distâncias pelas ruas (OSRM)
     // ======================================================================
     const routing = {
@@ -687,7 +727,7 @@
             let res = null;
             if (it.lat != null && it.lng != null) res = { lat: it.lat, lng: it.lng, precise: true };
             else {
-                try { res = it.parts ? await geo.searchParts(it.parts) : await geo.search(it.search || it.addr); } catch (e) { res = null; }
+                try { res = await locate(it); } catch (e) { res = null; }
             }
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;
             addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, urgent: it.urgent, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
@@ -980,7 +1020,7 @@
             const [c, uf] = city.split(/\s*[,/-]\s*(?=[A-Za-z]{2}$)/);
             items.forEach(it => {
                 if (it.parts) { if (!it.parts.city) { it.parts.city = c; it.parts.uf = it.parts.uf || uf || ''; } }
-                else if (it.lat == null) it.search = `${it.addr}, ${city}`;
+                else if (it.lat == null) { it.search = `${it.addr}, ${city}`; it.parts = { ...Enderecos.parse(it.addr), city: c, uf: uf || '' }; }
             });
         }
         return items;
@@ -1130,7 +1170,7 @@
                     if (prio !== s.priority) { s.priority = prio; invalidate(); }
                     if (addr && (addr !== s.addr || s.lat == null)) {
                         busy('Procurando endereço…');
-                        const res = await geo.search(addr).catch(() => null);
+                        const res = await locate({ addr }).catch(() => null);
                         busy(false);
                         s.addr = addr;
                         if (res) { s.lat = res.lat; s.lng = res.lng; s.warn = res.precise === false ? 'approx' : false; }
@@ -1533,7 +1573,7 @@
                 if (!q) return;
                 hide();
                 busy('Procurando endereço…');
-                const res = await geo.search(q).catch(() => null);
+                const res = await (geo.parseCoords(q) || /^\s*\d{5}-?\d{3}\s*$/.test(q) ? geo.search(q) : locate({ addr: q })).catch(() => null);
                 busy(false);
                 if (!res) return toast('Endereço não encontrado. Inclua bairro e cidade, ou use "No mapa".', 5000);
                 input.value = '';

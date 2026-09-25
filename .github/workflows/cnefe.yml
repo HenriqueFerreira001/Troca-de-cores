@@ -1,0 +1,51 @@
+# Baixa o cadastro oficial de endereços do IBGE (CNEFE, Censo 2022) das cidades
+# listadas em dados/cidades.txt e gera o índice usado pelo app para achar o número exato.
+# Formato de dados/cidades.txt (uma por linha): CODIGO_IBGE UF Nome da Cidade
+name: Endereços IBGE
+
+on:
+  push:
+    paths:
+      - 'dados/cidades.txt'
+      - 'tools/cnefe-indice.js'
+      - '.github/workflows/cnefe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cnefe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Baixar e gerar índices
+        run: |
+          BASE="https://ftp.ibge.gov.br/Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/Censo_Demografico_2022/Arquivos_CNEFE/CSV/Municipio"
+          mkdir -p dados/cnefe tmp
+          while read -r COD UF NOME; do
+            [ -z "$COD" ] && continue
+            PASTA=$(curl -sSL "$BASE/" | grep -o "href=\"${COD:0:2}_[A-Z]*/\"" | head -1 | sed 's/href="//; s/"//')
+            ARQ=$(curl -sSL "$BASE/$PASTA" | grep -o "href=\"${COD}_[^\"]*\.zip\"" | head -1 | sed 's/href="//; s/"//')
+            echo "== $NOME ($COD): $BASE/$PASTA$ARQ"
+            curl -sSL -o "tmp/$COD.zip" "$BASE/$PASTA$ARQ"
+            unzip -o -q "tmp/$COD.zip" -d "tmp/$COD"
+            CSV=$(find "tmp/$COD" -iname '*.csv' | head -1)
+            node tools/cnefe-indice.js "$CSV" "$COD" "$NOME" "$UF" "dados/cnefe/$COD.json"
+          done < dados/cidades.txt
+          # lista de cidades disponível para o app
+          node -e "
+            const fs=require('fs');
+            const l=fs.readFileSync('dados/cidades.txt','utf8').split('\n').filter(x=>x.trim()).map(x=>{const [cod,uf,...n]=x.trim().split(/\s+/);return {cod,uf,cidade:n.join(' ')}});
+            fs.writeFileSync('dados/cidades.json', JSON.stringify(l, null, 1));"
+      - name: Salvar índices no repositório
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dados/cnefe dados/cidades.json
+          git diff --cached --quiet && echo "Sem mudanças" && exit 0
+          git commit -m "Atualiza endereços do IBGE (CNEFE)"
+          git push

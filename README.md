@@ -31,6 +31,11 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 - **Até 16 paradas** o app testa matematicamente todas as possibilidades e garante a **melhor ordem possível**.
 - **Acima disso** usa um método de otimização que, nos testes, chega ao resultado ótimo ou a menos de 1% dele (em 1 a 4 segundos).
 - As distâncias são **pelas ruas de verdade** (mão de rua incluída), não em linha reta.
+- **Endereços oficiais do IBGE:** para as cidades da empresa, o app usa o cadastro de endereços
+  do Censo 2022 (CNEFE), que tem a posição de cada número de casa. Nas 20 OS de teste de
+  Embu das Artes, 11 caíram no número exato e 9 entre os dois vizinhos da mesma quadra.
+  Para incluir outra cidade, adicione uma linha em `dados/cidades.txt`
+  (`CODIGO_IBGE UF Nome`, ex.: `3552809 SP Taboão da Serra`). O GitHub baixa e gera o índice sozinho.
 - O maior risco de erro é o **endereço ser achado no lugar errado**. Por isso o app avisa
   quando não achou o número exato (marcador laranja). Confira no mapa e **arraste o marcador**
   para o lugar certo se precisar.
@@ -53,6 +58,8 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 | `index.html`, `app.css` | Tela |
 | `app.js` | Busca de endereços, mapa, importação, execução da rota, envio |
 | `solver.js` | Otimizador (cálculo da melhor ordem) |
+| `enderecos.js`, `dados/` | Busca pelo número exato nos endereços do IBGE |
+| `tools/rota-cli.js`, `testes-rota/` | Organiza uma lista real pelo GitHub Actions (para comparar com outros apps) |
 | `sw.js`, `manifest.json`, `icon.svg` | Permitem instalar no celular |
 | `tests/solver.test.js` | Testes do otimizador: `node tests/solver.test.js` |
 
