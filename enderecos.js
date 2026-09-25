@@ -110,7 +110,15 @@
     // Ruas candidatas: mesmo nome, ou nome muito parecido (erro de digitação).
     function candidatas(pedaco, street) {
         const k = nucleo(street);
-        if (pedaco._porNucleo.has(k)) return { nomes: pedaco._porNucleo.get(k), score: 1 };
+        const nomes = [];
+        if (pedaco._porNucleo.has(k)) nomes.push(...pedaco._porNucleo.get(k));
+        // A mesma via pode estar cadastrada com nome maior ou menor
+        // (ex.: "JACU PESSEGO" e "JACU PESSEGO NOVA TRABALHADORES").
+        for (const n of pedaco._nucleos) {
+            if (n === k || n.length < 6 || k.length < 6) continue;
+            if (n.startsWith(k + ' ') || k.startsWith(n + ' ')) nomes.push(...pedaco._porNucleo.get(n));
+        }
+        if (nomes.length) return { nomes, score: 1 };
         let best = null, bs = 0;
         for (const n of pedaco._nucleos) {
             if (Math.abs(n.length - k.length) > 4) continue;
@@ -147,7 +155,10 @@
         let melhor = null;
         for (const nome of c.nomes) {
             const pts = pedaco.ruas[nome].map(e => ({ n: e[0], lat: e[1] / 1e5, lng: e[2] / 1e5, nome, bairro: city.bairros[e[3]], bn: bairroNota(city._bairrosNorm[e[3]] || '') }));
-            const nota = Math.max(...pts.map(x => x.bn)) * 2 + (!t || tipo(nome) === t ? 1 : 0) + pts.length / 1e6;
+            // Desempate: o trecho que tem o número procurado (ou vizinhos colados) ganha.
+            const temNumero = isFinite(numero) && pts.some(x => x.n === numero) ? 3
+                : (isFinite(numero) && (estimar(pts, numero) || {}).perto <= 12 ? 1.5 : 0);
+            const nota = Math.max(...pts.map(x => x.bn)) * 2 + (!t || tipo(nome) === t ? 1 : 0) + temNumero + pts.length / 1e6;
             if (!melhor || nota > melhor.nota) melhor = { nome, pts, nota };
         }
         let pontos = melhor.pts;
@@ -157,8 +168,15 @@
         const ancoras = pontos.filter(x => x.bn > 0);
         if (ancoras.length) {
             pontos = pontos.filter(x => x.bn > 0 || ancoras.some(a => Math.abs(a.lat - x.lat) < 0.012 && Math.abs(a.lng - x.lng) < 0.012));
-        } else if (bairro && espalhado(pontos)) {
-            return { ambiguous: true, found: `${titulo(melhor.nome)} (existe em mais de um lugar da cidade; confira o bairro)` };
+        } else if (espalhado(pontos)) {
+            // Rua longa ou repetida em vários bairros, e o bairro informado não bateu.
+            // Os números ao longo de uma mesma via não se repetem: se o número (ou
+            // vizinhos bem próximos) existir, a posição é confiável mesmo assim.
+            const exato = isFinite(numero) && pontos.find(x => x.n === numero);
+            const est = !exato && isFinite(numero) ? estimar(pontos, numero) : null;
+            if (!exato && !(est && est.perto <= 12)) {
+                return { ambiguous: true, found: `${titulo(melhor.nome)} (existe em mais de um lugar da cidade; confira o bairro)` };
+            }
         }
 
         const label = (x) => `${titulo(x.nome)}, ${x.n || 's/n'} - ${titulo(x.bairro)}`;
@@ -219,6 +237,7 @@
         }
         // além do último número cadastrado: não dá para estimar bem
         const x = lo || hi;
+        if (!x) return null;
         return { lat: x.lat, lng: x.lng, lo, hi, perto: Infinity, good: false };
     }
 

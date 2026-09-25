@@ -74,10 +74,13 @@ async function nominatim(params) {
 // Mesma estratégia do app: primeiro o IBGE (número exato); depois o mapa gratuito
 // (rua+número+cidade; texto com bairro; sem bairro).
 async function geocode(p, cidade, uf, city) {
+    let ibge = null;
     if (city) {
         const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro });
         if (r && !r.ambiguous && r.lat != null) {
-            return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            // Número exato ou estimativa boa: não precisa do mapa gratuito.
+            if (ibge.precise) return ibge;
         }
     }
     const street = expand(p.rua);
@@ -87,7 +90,7 @@ async function geocode(p, cidade, uf, city) {
         { q: [street, p.numero, bairro, cidade, uf].filter(Boolean).join(', ') },
         { q: [street, p.numero, cidade, uf].filter(Boolean).join(', ') },
     ];
-    let best = null;
+    let best = ibge;
     for (const t of tries) {
         const data = await nominatim(t);
         if (!data.length) continue;
