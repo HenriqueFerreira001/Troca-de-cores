@@ -1,0 +1,29 @@
+# Roda uma lista de endereços de verdade (testes-rota/*.json) com os mesmos
+# serviços e o mesmo otimizador do app, e mostra a ordem no resumo da execução.
+name: Testar rota
+
+on:
+  push:
+    paths:
+      - 'testes-rota/**'
+      - 'tools/rota-cli.js'
+      - 'solver.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rota:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tests/solver.test.js
+      - name: Organizar rotas
+        run: |
+          for f in testes-rota/*.json; do
+            node tools/rota-cli.js "$f" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
