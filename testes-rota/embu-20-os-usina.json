@@ -1,0 +1,158 @@
+{
+  "nome": "Embu das Artes - 20 OS saindo da usina (mesmo início do Zeo)",
+  "cidade": "Embu das Artes",
+  "uf": "SP",
+  "otimizarPor": "tempo",
+  "paradas": [
+    {
+      "os": "2630022976",
+      "rua": "RUA JACINTHA RIBEIRO MEI",
+      "numero": "182",
+      "bairro": "CENTRO"
+    },
+    {
+      "os": "2637831880",
+      "rua": "AVENIDA JOAO BATISTA MEDINA",
+      "numero": "749",
+      "bairro": "CENTRO"
+    },
+    {
+      "os": "2637774869",
+      "rua": "RUA PEROLA",
+      "numero": "182",
+      "bairro": "CH ANA LUCIA"
+    },
+    {
+      "os": "2634694116",
+      "rua": "ALAMEDA CURIO",
+      "numero": "214",
+      "bairro": "ITATIAIA"
+    },
+    {
+      "os": "26103973657",
+      "rua": "RUA CUBATAO",
+      "numero": "582",
+      "bairro": "CENTRO"
+    },
+    {
+      "os": "2630330265",
+      "rua": "RUA ANTONIO MORY",
+      "numero": "311",
+      "bairro": "JD DE LOURDES"
+    },
+    {
+      "os": "2637140893",
+      "rua": "RUA INDIA",
+      "numero": "95",
+      "bairro": "JD MIMAS"
+    },
+    {
+      "os": "2638189537",
+      "rua": "RUA TEXAS",
+      "numero": "147",
+      "bairro": "JD MAGALI"
+    },
+    {
+      "os": "2634731169",
+      "rua": "RUA PROFESSOR MARIO OSASSA",
+      "numero": "968",
+      "bairro": "JD MAGALI"
+    },
+    {
+      "os": "2636530415",
+      "rua": "RUA GOIABEIRA",
+      "numero": "1419",
+      "bairro": "JD PINHEIRINHO"
+    },
+    {
+      "os": "2637633198",
+      "rua": "RUA POR DO SOL",
+      "numero": "20",
+      "bairro": "JD PINHEIRINHO"
+    },
+    {
+      "os": "2637093328",
+      "rua": "RUA DOM PEDRO I",
+      "numero": "26",
+      "bairro": "JD SENIZE"
+    },
+    {
+      "os": "2638189662",
+      "rua": "AVENIDA JOAO PAULO II",
+      "numero": "2152",
+      "bairro": "JD INDEPENDENCIA"
+    },
+    {
+      "os": "2636628546",
+      "rua": "RUA URSO",
+      "numero": "198",
+      "bairro": "JD INDEPENDENCIA"
+    },
+    {
+      "os": "2637553857",
+      "rua": "RUA CARAZINHO",
+      "numero": "5",
+      "bairro": "JD NOVO CAMPO LIMPO"
+    },
+    {
+      "os": "2638307311",
+      "rua": "RUA LIBERDADE",
+      "numero": "801",
+      "bairro": "JD NSA SRA DE FATIMA"
+    },
+    {
+      "os": "2638186749",
+      "rua": "AVENIDA JOAO PAULO II",
+      "numero": "806",
+      "bairro": "JD STA TEREZA"
+    },
+    {
+      "os": "2637569115",
+      "rua": "RUA FLAMENGO",
+      "numero": "100",
+      "bairro": "JD STO EDUARDO"
+    },
+    {
+      "os": "2637058570",
+      "rua": "AVENIDA CAPIVARI",
+      "numero": "171",
+      "bairro": "PQ LUIZA"
+    },
+    {
+      "os": "2637234505",
+      "rua": "AVENIDA ROTARY",
+      "numero": "190",
+      "bairro": "PQ PIRAJUSSARA"
+    }
+  ],
+  "inicio": {
+    "nome": "PRF Embu Usina de Asfalto",
+    "rua": "ESTRADA VELHA DA PEDREIRA",
+    "numero": "",
+    "bairro": "PARQUE SAO LEONARDO"
+  },
+  "fim": "livre",
+  "compararNome": "Zeo",
+  "compararCom": [
+    "2634694116",
+    "2637774869",
+    "2637831880",
+    "2630022976",
+    "2637633198",
+    "2636530415",
+    "2638189537",
+    "2637093328",
+    "2634731169",
+    "2630330265",
+    "26103973657",
+    "2637140893",
+    "2637234505",
+    "2637058570",
+    "2638307311",
+    "2638186749",
+    "2636628546",
+    "2638189662",
+    "2637553857",
+    "2637569115"
+  ]
+}
