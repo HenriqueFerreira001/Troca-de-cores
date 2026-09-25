@@ -1,8 +1,8 @@
 {
-  "nome": "Embu das Artes - 20 OS saindo da usina (mesmo início do Zeo)",
+  "nome": "Embu das Artes - 20 OS saindo da usina (mesmo início do Zeo) - menor distância",
   "cidade": "Embu das Artes",
   "uf": "SP",
-  "otimizarPor": "tempo",
+  "otimizarPor": "distancia",
   "paradas": [
     {
       "os": "2630022976",
