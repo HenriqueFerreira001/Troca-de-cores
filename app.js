@@ -117,6 +117,7 @@
         serviceMin: 15,
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
+        urgentMode: 'mark',       // mark: só destaca (rota sem voltas) | first: faz antes das outras
     };
 
     let state = load();
@@ -443,10 +444,6 @@
         const missing = r.stops.length - stops.length;
         if (missing) return toast(`${missing} parada(s) sem localização. Corrija antes de otimizar.`, 4000);
         if (stops.length < 1) return toast('Adicione pelo menos uma parada.');
-        if (!r.start) {
-            toast('Defina o ponto de início (GPS ou endereço).', 4000);
-            return startEdit();
-        }
         if (r.endMode === 'custom' && !r.end) return toast('Defina o endereço de fim.');
 
         // Paradas já feitas ficam no começo, na ordem em que foram feitas.
@@ -456,10 +453,11 @@
 
         // Se já começou a rota, otimiza a partir da última parada feita.
         const lastDone = [...done].sort((a, b) => (a.doneAt || 0) - (b.doneAt || 0)).pop();
+        // Sem início definido, a rota começa pela parada que deixar o caminho mais curto.
         const origin = r.startedAt && lastDone ? lastDone : r.start;
         const end = endPoint(r);
 
-        const points = [origin, ...todo];
+        const points = origin ? [origin, ...todo] : [...todo];
         if (end) points.push(end);
 
         busy('Calculando distâncias pelas ruas…', 0);
@@ -474,9 +472,15 @@
 
         busy('Encontrando a melhor ordem…', 0.85);
         await sleep(30);
-        const matrix = state.settings.optimizeBy === 'distance' ? m.dist : m.dur;
-        const nodes = todo.map((s, i) => ({ idx: i + 1, priority: s.priority }));
-        const endIdx = end ? points.length - 1 : null;
+        let matrix = state.settings.optimizeBy === 'distance' ? m.dist : m.dur;
+        // Sem início: ponto virtual 0 com custo zero até qualquer parada.
+        if (!origin) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(row => [1e12, ...row]));
+        const urgentFirst = state.settings.urgentMode === 'first';
+        const nodes = todo.map((s, i) => ({
+            idx: i + 1,
+            priority: s.priority !== 'normal' ? s.priority : (s.urgent && urgentFirst ? 'first' : 'normal'),
+        }));
+        const endIdx = end ? matrix.length - 1 : null;
         const order = RouteSolver.solveWithPriorities(matrix, 0, nodes, endIdx, {
             timeLimitMs: Math.min(4000, 500 + todo.length * 30),
         });
@@ -589,7 +593,7 @@
 
         r.stops.forEach((s, i) => {
             if (s.lat == null) return;
-            const cls = [s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.warn ? 'warn' : ''].join(' ');
+            const cls = [s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.warn ? 'warn' : '', s.urgent ? 'urgent' : ''].join(' ');
             const mk = L.marker([s.lat, s.lng], {
                 icon: icon(cls, r.optimized ? i + 1 : '•'),
                 draggable: true,
@@ -651,6 +655,7 @@
             note: p.note || '',
             phone: p.phone || '',
             priority: p.priority || 'normal',
+            urgent: !!p.urgent,
             status: 'pending',
             doneAt: null,
             result: '',
@@ -685,7 +690,7 @@
                 try { res = it.parts ? await geo.searchParts(it.parts) : await geo.search(it.search || it.addr); } catch (e) { res = null; }
             }
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;
-            addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
+            addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, urgent: it.urgent, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
         }
         busy(false);
         render();
@@ -756,8 +761,9 @@
             const o = part[0], d = part[part.length - 1], w = part.slice(1, -1);
             let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}`;
             if (w.length) url += `&waypoints=${encodeURIComponent(w.map(p => `${p.lat},${p.lng}`).join('|'))}`;
-            // pts[0] é o início; a parada N está em pts[N].
-            const from = Math.max(1, i), to = Math.min(r.stops.length, i + part.length - 1);
+            // Com início, a parada N está em pts[N]; sem início, em pts[N-1].
+            const off = r.start ? 0 : 1;
+            const from = Math.max(1, i + off), to = Math.min(r.stops.length, i + part.length - 1 + off);
             links.push({ url, label: from === to ? `Parada ${from}` : `Paradas ${from} a ${to}` });
         }
         return links;
@@ -878,7 +884,7 @@
         const get = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : '');
         const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : null; };
 
-        const items = body.map(row => {
+        const items = body.map((row, bi) => {
             if (!hasHeader) return { addr: row.filter(Boolean).join(', ') };
             const street = get(row, col.addr);
             let number = get(row, col.num);
@@ -893,15 +899,65 @@
                 addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng,
                 parts: street ? parts : null,
                 note: noteParts.join(' — '), phone: get(row, col.phone),
+                urgent: !!(rows.red && rows.red.has(bi + (hasHeader ? 1 : 0))),
             };
         }).filter(it => it.addr);
         items.hasCity = col.city >= 0;
         return items;
     }
 
+    // Linhas da planilha pintadas de vermelho (fundo ou letra) = prioridade.
+    // Retorna os índices das linhas (0 = primeira linha da tabela).
+    function redRows(buf, wb, ws) {
+        const red = new Set();
+        try {
+            const isRed = (rgb) => {
+                if (!rgb || rgb.length < 6) return false;
+                const h = rgb.slice(-6);
+                const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+                return r >= 150 && g <= 110 && b <= 110;
+            };
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            const mark = (excelRow) => red.add(excelRow - 1 - range.s.r);
+
+            // Fundo vermelho: o leitor já informa na célula.
+            for (const addr in ws) {
+                if (addr[0] === '!') continue;
+                const c = ws[addr];
+                if (c && c.s && c.s.fgColor && isRed(c.s.fgColor.rgb)) mark(XLSX.utils.decode_cell(addr).r + 1);
+            }
+
+            // Letra vermelha: lê o estilo de cada célula direto do arquivo.
+            const st = wb.Styles;
+            if (st && st.CellXf && st.Fonts) {
+                const zip = XLSX.CFB.read(new Uint8Array(buf), { type: 'array' });
+                const text = (p) => {
+                    const i = zip.FullPaths.findIndex(fp => fp.toLowerCase().endsWith('/' + p.toLowerCase()));
+                    return i >= 0 ? new TextDecoder().decode(zip.FileIndex[i].content) : '';
+                };
+                const wbx = text('xl/workbook.xml'), rels = text('xl/_rels/workbook.xml.rels');
+                const rid = (wbx.match(/<sheet\b[^>]*r:id="([^"]+)"/) || [])[1];
+                let target = rid && (rels.match(new RegExp('<Relationship\\b[^>]*Id="' + rid + '"[^>]*Target="([^"]+)"')) || rels.match(new RegExp('<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="' + rid + '"')) || [])[1];
+                if (target) {
+                    target = target.replace(/^\/?(xl\/)?/, 'xl/');
+                    const xml = text(target);
+                    const re = /<c\b[^>]*\br="[A-Z]+(\d+)"[^>]*\bs="(\d+)"/g;
+                    let m;
+                    while ((m = re.exec(xml))) {
+                        const xf = st.CellXf[+m[2]];
+                        const font = xf && st.Fonts[xf.fontId];
+                        if (font && font.color && isRed(font.color.rgb)) mark(+m[1]);
+                    }
+                }
+            }
+        } catch (e) { console.warn('cores da planilha', e); }
+        return red;
+    }
+
     // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
     async function askCity(items, title) {
-        const html = `<p>Encontrei <b>${items.length}</b> endereço(s). Primeiros:</p>
+        const urgentN = items.filter(i => i.urgent).length;
+        const html = `<p>Encontrei <b>${items.length}</b> endereço(s)${urgentN ? `, sendo <b>${urgentN}</b> com prioridade (linha vermelha)` : ''}. Primeiros:</p>
             <ul>${items.slice(0, 5).map(i => `<li>${esc(i.addr)}</li>`).join('')}</ul>
             ${items.hasCity ? '' : `<label>Cidade destes endereços (a planilha não tem cidade)</label>
             <input type="text" id="imp-city" placeholder="Ex.: Embu das Artes, SP" value="${esc(state.settings.defaultCity || '')}">
@@ -941,8 +997,11 @@
             } else {
                 busy('Abrindo planilha…');
                 if (!window.XLSX) await loadScript(XLSX_URL);
-                const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-                rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array', cellStyles: true });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true });
+                rows.red = redRows(buf, wb, ws);
                 busy(false);
             }
             const items = rowsToItems(rows);
@@ -1048,7 +1107,8 @@
             <label>Endereço</label><input type="text" id="sd-addr" value="${esc(s.addr)}">
             <label>Observação (o que fazer no local)</label><input type="text" id="sd-note" value="${esc(s.note)}">
             <label>Telefone do contato</label><input type="tel" id="sd-phone" value="${esc(s.phone)}">
-            <label>Prioridade</label>
+            <div class="check-row"><input type="checkbox" id="sd-urgent" ${s.urgent ? 'checked' : ''}><label for="sd-urgent" style="margin:0">🔴 Prioridade (urgente)</label></div>
+            <label>Posição na rota</label>
             <select id="sd-prio">
                 <option value="normal">Normal (onde for melhor)</option>
                 <option value="first">Fazer primeiro</option>
@@ -1064,6 +1124,8 @@
                     const addr = $('#sd-addr').value.trim();
                     s.note = $('#sd-note').value.trim();
                     s.phone = $('#sd-phone').value.trim();
+                    const urgent = $('#sd-urgent').checked;
+                    if (urgent !== !!s.urgent) { s.urgent = urgent; if (state.settings.urgentMode === 'first') invalidate(); }
                     const prio = $('#sd-prio').value;
                     if (prio !== s.priority) { s.priority = prio; invalidate(); }
                     if (addr && (addr !== s.addr || s.lat == null)) {
@@ -1197,6 +1259,11 @@
                 <option value="waze">Waze</option>
                 <option value="apple">Apple Mapas</option>
             </select>
+            <label>Paradas com prioridade (linha vermelha na planilha)</label>
+            <select id="st-urgent">
+                <option value="mark">Só destacar — rota em sequência, sem voltas</option>
+                <option value="first">Fazer antes das outras (pode aumentar o caminho)</option>
+            </select>
             <label>Buscar endereços somente no país</label>
             <select id="st-country">
                 <option value="br">Brasil</option>
@@ -1214,6 +1281,8 @@
                     s.serviceMin = Math.max(0, parseInt($('#st-service').value, 10) || 0);
                     s.navApp = $('#st-nav').value;
                     s.country = $('#st-country').value;
+                    const um = $('#st-urgent').value;
+                    if (um !== s.urgentMode) { s.urgentMode = um; invalidate(); }
                     save(); render();
                 },
             },
@@ -1221,12 +1290,13 @@
         $('#st-by').value = s.optimizeBy;
         $('#st-nav').value = s.navApp;
         $('#st-country').value = s.country;
+        $('#st-urgent').value = s.urgentMode;
     }
 
     function shareDialog() {
         const r = route();
         if (!r.stops.length) return toast('Adicione paradas primeiro.');
-        const legs = r.optimized && r.start && r.stops.every(s => s.lat != null) ? googleLegs(r) : [];
+        const legs = r.optimized && r.stops.every(s => s.lat != null) ? googleLegs(r) : [];
         openDialog('Enviar rota para a equipe', `
             <p class="muted">A equipe recebe a lista numerada com o link de cada endereço e um link que abre esta rota no celular dela.</p>
             ${!r.optimized ? '<div class="warning">A rota ainda não foi otimizada.</div>' : ''}
@@ -1285,7 +1355,9 @@
     function render() {
         const r = route();
         $('#route-name').value = r.name;
-        $('#start-label').textContent = r.start ? r.start.addr : 'Não definido — use GPS ou digite';
+        $('#start-label').textContent = r.start ? r.start.addr : 'Opcional — sem início, começa pela melhor parada';
+        $('#btn-start-clear').classList.toggle('hidden', !r.start);
+        $('#end-mode').options[0].textContent = r.start ? 'Voltar ao início' : 'Voltar ao início (defina o início)';
         $('#end-mode').value = r.endMode;
         $('#end-label').classList.toggle('hidden', r.endMode !== 'custom');
         $('#btn-end-edit').classList.toggle('hidden', r.endMode !== 'custom');
@@ -1320,7 +1392,7 @@
             const i = r.stops.indexOf(next);
             nc.classList.remove('hidden');
             nc.innerHTML = `
-                <h3>Próxima parada · ${i + 1} de ${r.stops.length}</h3>
+                <h3>Próxima parada · ${i + 1} de ${r.stops.length}${next.urgent ? ' · 🔴 PRIORIDADE' : ''}</h3>
                 <div class="addr">${esc(next.addr)}</div>
                 ${next.note ? `<div class="note">📝 ${esc(next.note)}</div>` : ''}
                 <div class="btns">
@@ -1336,10 +1408,11 @@
         $('#empty').classList.toggle('hidden', r.stops.length > 0);
         $('#stops').innerHTML = r.stops.map((s, i) => {
             const leg = r.legs ? r.legs[i + (r.start ? 0 : -1)] : null;
-            const cls = [s.status === 'done' ? 'done' : '', s.status === 'failed' ? 'failed' : '', next === s ? 'next' : ''].join(' ');
+            const cls = [s.status === 'done' ? 'done' : '', s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.urgent ? 'urgent' : ''].join(' ');
             const flags = [
                 s.warn === 'notfound' ? '<span class="flag flag-warn">não encontrado</span>' : '',
                 s.warn === 'approx' ? '<span class="flag flag-warn">posição aproximada</span>' : '',
+                s.urgent ? '<span class="flag flag-urgent">🔴 prioridade</span>' : '',
                 s.priority === 'first' ? '<span class="flag flag-first">fazer primeiro</span>' : '',
                 s.priority === 'last' ? '<span class="flag flag-last">deixar pro final</span>' : '',
                 s.status === 'done' ? `<span class="flag flag-done">feito ${fmtClock(new Date(s.doneAt))}</span>` : '',
@@ -1407,6 +1480,7 @@
             } catch (e) { busy(false); toast(e.message, 4000); }
         };
         $('#btn-start-edit').onclick = () => setSearchTarget('start');
+        $('#btn-start-clear').onclick = () => { route().start = null; invalidate(); save(); render(); toast('Sem início: a rota começa pela melhor parada.'); };
         $('#btn-end-edit').onclick = () => setSearchTarget('end');
         $('#search-target-cancel').onclick = () => setSearchTarget(null);
         $('#end-mode').onchange = (e) => {

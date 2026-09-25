@@ -9,12 +9,15 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 
 ## Como usar
 
-1. **Início:** toque em **📍 GPS** (sua localização) ou em **Mudar** e digite o endereço.
+1. **Início (opcional):** toque em **📍 GPS** (sua localização) ou em **Mudar** e digite o endereço.
+   Sem início, a rota começa pela parada que deixa o caminho mais curto.
 2. **Fim:** escolha *Voltar ao início*, *Terminar na última parada* ou *Terminar em outro endereço*.
 3. **Adicione as paradas:**
    - digite o endereço, CEP ou coordenadas (ou fale no 🎤);
    - **📋 Colar lista:** um endereço por linha (`endereço | observação`);
-   - **📄 Planilha:** Excel ou CSV (reconhece colunas como Endereço, Número, Bairro, Cidade, CEP, Latitude, Longitude, Observação, Telefone, Cliente);
+   - **📄 Planilha:** Excel ou CSV (reconhece colunas como OS, Rua/Endereço, Número, Bairro, Cidade, CEP, Latitude, Longitude, Observação, Telefone, Cliente).
+     Entende abreviações (JD, PQ, CH, NSA SRA, STA, AV…). Se não tiver coluna de cidade, o app pergunta.
+     **Linhas pintadas de vermelho** (fundo ou letra) viram **🔴 prioridade**;
    - **📷 Foto da lista:** tira foto de uma lista impressa e o app lê os endereços;
    - **🗺 No mapa:** toca no lugar exato.
 4. Toque em **⚡ Otimizar rota**. As paradas ficam numeradas na melhor ordem.
@@ -31,7 +34,9 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 - O maior risco de erro é o **endereço ser achado no lugar errado**. Por isso o app avisa
   quando não achou o número exato (marcador laranja). Confira no mapa e **arraste o marcador**
   para o lugar certo se precisar.
-- Prioridade por parada: *Fazer primeiro* ou *Deixar para o final*.
+- **🔴 Prioridade:** por padrão só destaca a parada. A rota continua em sequência, sem voltas.
+  Em ⚙ Configurações dá para mudar para *fazer as prioritárias antes das outras*.
+- Por parada também dá para escolher *Fazer primeiro* ou *Deixar para o final*.
 - Se a rota já começou, **Otimizar** reorganiza só o que falta, a partir da última parada feita.
 
 ## Colocar no ar (grátis, com GitHub Pages)
