@@ -113,12 +113,17 @@
         const nomes = [];
         if (pedaco._porNucleo.has(k)) nomes.push(...pedaco._porNucleo.get(k));
         // A mesma via pode estar cadastrada com nome maior ou menor
-        // (ex.: "JACU PESSEGO" e "JACU PESSEGO NOVA TRABALHADORES").
+        // (ex.: "JACU PESSEGO" e "JACU PESSEGO NOVA TRABALHADORES"). Só vale
+        // quando a parte em comum tem pelo menos duas palavras: "WILSON" não
+        // pode puxar "WILSON ACKEL". Se a rua de nome exato existir, a variante
+        // ainda precisa ficar perto dela (lookup confere).
+        const variantes = [];
         for (const n of pedaco._nucleos) {
-            if (n === k || n.length < 6 || k.length < 6) continue;
-            if (n.startsWith(k + ' ') || k.startsWith(n + ' ')) nomes.push(...pedaco._porNucleo.get(n));
+            if (n === k) continue;
+            const menor = n.length < k.length ? n : k, maior = n.length < k.length ? k : n;
+            if (menor.split(' ').length >= 2 && maior.startsWith(menor + ' ')) variantes.push(...pedaco._porNucleo.get(n));
         }
-        if (nomes.length) return { nomes, score: 1 };
+        if (nomes.length || variantes.length) return { nomes: nomes.concat(variantes), exatos: nomes.length, score: 1 };
         let best = null, bs = 0;
         for (const n of pedaco._nucleos) {
             if (Math.abs(n.length - k.length) > 4) continue;
@@ -152,9 +157,17 @@
         const bairroNota = (b) => (!bairro ? 0 : (b === bairro ? 1 : similar(b, bairro) >= 0.8 ? 0.8 : 0));
 
         // 1) Escolhe a rua: mesmo tipo (Rua/Avenida) e que passe pelo bairro informado.
+        const toPts = (nome) => pedaco.ruas[nome].map(e => ({ n: e[0], lat: e[1] / 1e5, lng: e[2] / 1e5, nome, bairro: city.bairros[e[3]], bn: bairroNota(city._bairrosNorm[e[3]] || '') }));
+        // Variantes do nome só entram se forem continuação da rua de nome exato (até ~1,5 km).
+        const exatosPts = c.exatos ? c.nomes.slice(0, c.exatos).flatMap(toPts) : [];
+        const nomesOk = c.nomes.filter((nome, i) => {
+            if (!c.exatos || i < c.exatos) return true;
+            const pts = toPts(nome);
+            return pts.some(p => exatosPts.some(q => Math.abs(p.lat - q.lat) < 0.014 && Math.abs(p.lng - q.lng) < 0.014));
+        });
         let melhor = null;
-        for (const nome of c.nomes) {
-            const pts = pedaco.ruas[nome].map(e => ({ n: e[0], lat: e[1] / 1e5, lng: e[2] / 1e5, nome, bairro: city.bairros[e[3]], bn: bairroNota(city._bairrosNorm[e[3]] || '') }));
+        for (const nome of nomesOk) {
+            const pts = toPts(nome);
             // Desempate: o trecho que tem o número procurado (ou vizinhos colados) ganha.
             const temNumero = isFinite(numero) && pts.some(x => x.n === numero) ? 3
                 : (isFinite(numero) && (estimar(pts, numero) || {}).perto <= 12 ? 1.5 : 0);
