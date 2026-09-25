@@ -11,7 +11,7 @@
  *   "cidade": "Embu das Artes", "uf": "SP",
  *   "inicio": "endereço de saída" (opcional),
  *   "fim": "voltar" | "livre" | "endereço" (opcional, padrão "livre" sem início e "voltar" com início),
- *   "otimizarPor": "tempo" | "distancia" (opcional, padrão "tempo"),
+ *   "otimizarPor": "distancia" | "tempo" (opcional, padrão "distancia"),
  *   "paradas": [{ "os": "123", "rua": "RUA X", "numero": "10", "bairro": "JD Y", "prioridade": false }]
  * }
  */
@@ -162,7 +162,7 @@ async function main() {
 
     const points = [...(start ? [start] : []), ...ok.map(s => s.geo), ...(end ? [end] : [])];
     const m = await osrmTable(points);
-    let matrix = cfg.otimizarPor === 'distancia' ? m.dist : m.dur;
+    let matrix = cfg.otimizarPor === 'tempo' ? m.dur : m.dist;
     // Sem início: ponto virtual com custo zero até qualquer parada (igual ao app).
     const off = start ? 0 : 1;
     if (!start) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(r => [1e12, ...r]));
@@ -180,7 +180,7 @@ async function main() {
     }
 
     log(`Início: ${start ? start.label : 'livre (começa pela parada mais conveniente)'} · Fim: ${fimModo}`);
-    log(`Otimizado por: ${cfg.otimizarPor === 'distancia' ? 'distância' : 'tempo'} · ${ok.length} paradas`);
+    log(`Otimizado por: ${cfg.otimizarPor === 'tempo' ? 'tempo' : 'distância'} · ${ok.length} paradas`);
     log(`**Total dirigindo: ${km(totD)} · ${min(totT)}**`);
     log();
     log('| # | OS | Endereço | Trecho | Localização encontrada |');

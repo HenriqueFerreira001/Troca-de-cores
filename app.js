@@ -113,7 +113,7 @@
 
     const defaultSettings = {
         country: 'br',
-        optimizeBy: 'duration',   // duration | distance
+        optimizeBy: 'distance',   // distance (menos km, sem volta à toa) | duration
         serviceMin: 15,
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
