@@ -135,6 +135,7 @@
                 const s = JSON.parse(raw);
                 s.settings = Object.assign({}, defaultSettings, s.settings);
                 Object.values(s.routes || {}).forEach(r => (r.stops || []).forEach(st => { if (st.urgent === true) st.urgent = 'alta'; }));
+                if (!s.settings.base) s.settings.base = { ...defaultSettings.base };
                 if (!s.settings.migrouTempo) {
                     // Comparação com o Zeo: ele otimiza por tempo e termina na última parada.
                     s.settings.migrouTempo = true;
@@ -547,6 +548,10 @@
         if (missing) return toast(`${missing} parada(s) sem localização. Corrija antes de otimizar.`, 4000);
         if (stops.length < 1) return toast('Adicione pelo menos uma parada.');
         if (r.endMode === 'custom' && !r.end) return toast('Defina o endereço de fim.');
+        if (!r.start && state.settings.base) {
+            r.start = { ...state.settings.base };
+            toast('Saída: ' + r.start.addr, 3000);
+        }
 
         // Paradas já feitas ficam no começo, na ordem em que foram feitas.
         const done = r.stops.filter(s => s.status !== 'pending');
@@ -1585,11 +1590,10 @@
     function render() {
         const r = route();
         $('#route-name').value = r.name;
-        $('#start-label').textContent = r.start ? r.start.addr : 'Opcional — sem início, começa pela melhor parada';
-        $('#btn-start-clear').classList.toggle('hidden', !r.start);
-        $('#btn-start-base').classList.toggle('hidden', !r.start);
-        $('#btn-start-base').textContent = isBase(r.start) ? '★ Base' : '☆ Fixar';
-        $('#btn-start-base').title = isBase(r.start) ? 'Esta é a base fixa (toque para deixar de ser)' : 'Fixar como base: toda rota nova começa daqui';
+        $('#start-label').textContent = r.start ? (isBase(r.start) ? '★ ' : '') + r.start.addr : 'Sem saída — ao otimizar, usa a base';
+        $('#btn-start-base').classList.toggle('hidden', !r.start || isBase(r.start));
+        $('#btn-start-base').textContent = '☆ Fixar como base';
+        $('#btn-start-base').title = 'Toda rota nova vai começar deste ponto';
         $('#btn-start-usebase').classList.toggle('hidden', !!r.start || !state.settings.base);
         const optNear = $('#end-mode').querySelector('option[value="near"]');
         optNear.textContent = r.start ? 'Terminar perto da saída (equipe volta pra base)' : 'Terminar perto da saída (defina a saída)';
@@ -1735,12 +1739,12 @@
             } catch (e) { busy(false); toast(e.message, 4000); }
         };
         $('#btn-start-edit').onclick = () => setSearchTarget('start');
-        $('#btn-start-clear').onclick = () => { route().start = null; invalidate(); save(); render(); toast('Sem início: a rota começa pela melhor parada.'); };
         $('#btn-start-base').onclick = () => {
             const r = route();
             if (!r.start) return;
-            if (isBase(r.start)) { state.settings.base = null; toast('Base removida. Rotas novas começam sem saída fixa.'); }
-            else { state.settings.base = { ...r.start }; toast('Saída fixada como base: toda rota nova começa daqui.'); }
+            if (isBase(r.start)) return;
+            state.settings.base = { ...r.start };
+            toast('Saída fixada como base: toda rota nova começa daqui.');
             save(); render();
         };
         $('#btn-start-usebase').onclick = () => {
