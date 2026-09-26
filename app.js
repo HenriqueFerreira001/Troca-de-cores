@@ -101,7 +101,7 @@
             name: name || 'Rota ' + new Date().toLocaleDateString('pt-BR'),
             createdAt: Date.now(),
             start: base ? { ...base } : null,   // { addr, lat, lng } — começa pela base fixa, se houver
-            endMode: 'free',      // free (termina na última parada) | return | custom
+            endMode: 'near',      // near (termina perto da saída) | free (última parada) | return | custom
             end: null,
             stops: [],            // { id, addr, lat, lng, note, phone, priority, status, doneAt, result, photos, warn }
             optimized: false,
@@ -119,7 +119,7 @@
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
         urgentMode: 'mark',       // mark: só destaca (rota sem voltas) | first: faz antes das outras
-        nearestFirst: true,       // a parada 1 é a mais perto da saída; a rota vai se afastando
+        nearestFirst: false,      // a parada 1 é a mais perto da saída (o contrário de "terminar perto da saída")
         defaultCity: 'Embu das Artes, SP',
         // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
         base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
@@ -135,6 +135,11 @@
                 const s = JSON.parse(raw);
                 s.settings = Object.assign({}, defaultSettings, s.settings);
                 Object.values(s.routes || {}).forEach(r => (r.stops || []).forEach(st => { if (st.urgent === true) st.urgent = 'alta'; }));
+                if (!s.settings.migrouNear) {
+                    s.settings.migrouNear = true;
+                    s.settings.nearestFirst = false;
+                    Object.values(s.routes || {}).forEach(r => { if (r.endMode === 'free') { r.endMode = 'near'; r.optimized = false; } });
+                }
                 if (s.routes && s.routes[s.current]) return s;
             }
         } catch (e) { /* armazenamento indisponível */ }
@@ -546,6 +551,7 @@
         // Sem início definido, a rota começa pela parada que deixar o caminho mais curto.
         const origin = r.startedAt && lastDone ? lastDone : r.start;
         const end = endPoint(r);
+        const perto = r.endMode === 'near' && !!origin;
 
         const points = origin ? [origin, ...todo] : [...todo];
         if (end) points.push(end);
@@ -571,7 +577,8 @@
             priority: s.priority !== 'normal' ? s.priority
                 : (urgentFirst && s.urgent === 'alta' ? 'first' : urgentFirst && s.urgent === 'media' ? 'second' : 'normal'),
         }));
-        const endIdx = end ? matrix.length - 1 : null;
+        // "Perto da saída": calcula como se voltasse à base (fim = índice 0).
+        const endIdx = end ? matrix.length - 1 : (perto ? 0 : null);
         let order;
         const semGrupos = nodes.every(n => n.priority === 'normal');
         if (state.settings.nearestFirst && origin && semGrupos && todo.length > 1) {
@@ -595,7 +602,13 @@
         const idxAtual = todo.map((_, i) => i + 1);
         const custoAtual = RouteSolver.fullCost(matrix, 0, idxAtual, endIdx);
         const custoNovo = RouteSolver.fullCost(matrix, 0, order, endIdx);
-        const ordemFinal = r.optimized && custoAtual <= custoNovo + 1e-6 ? idxAtual : order;
+        let ordemFinal = r.optimized && custoAtual <= custoNovo + 1e-6 ? idxAtual : order;
+        // Um circuito pode ser percorrido nos dois sentidos: escolhe o que termina
+        // mais perto da saída, para a equipe acabar o dia perto da base.
+        if (perto && semGrupos && ordemFinal.length > 1) {
+            const a = ordemFinal[0], z = ordemFinal[ordemFinal.length - 1];
+            if (matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
+        }
         r.stops = doneOrdered.concat(ordemFinal.map(i => todo[i - 1]));
         r.optimized = true;
         r.approx = approx;
@@ -1547,7 +1560,8 @@
         $('#btn-start-base').textContent = isBase(r.start) ? '★ Base' : '☆ Fixar';
         $('#btn-start-base').title = isBase(r.start) ? 'Esta é a base fixa (toque para deixar de ser)' : 'Fixar como base: toda rota nova começa daqui';
         $('#btn-start-usebase').classList.toggle('hidden', !!r.start || !state.settings.base);
-        $('#end-mode').options[0].textContent = r.start ? 'Voltar ao início' : 'Voltar ao início (defina o início)';
+        const optNear = $('#end-mode').querySelector('option[value="near"]');
+        optNear.textContent = r.start ? 'Terminar perto da saída (equipe volta pra base)' : 'Terminar perto da saída (defina a saída)';
         $('#end-mode').value = r.endMode;
         $('#end-label').classList.toggle('hidden', r.endMode !== 'custom');
         $('#btn-end-edit').classList.toggle('hidden', r.endMode !== 'custom');
