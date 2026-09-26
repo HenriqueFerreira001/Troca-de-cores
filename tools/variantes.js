@@ -54,7 +54,9 @@ async function main() {
         variantes.push([`${rot} · termina na última parada`, Solver.solveWithPriorities(mat, 0, nodes, null, {})]);
         let perto = Solver.solveWithPriorities(livreSub(mat), 0, nodes, null, {});
         if (mat[perto[0]][0] < mat[perto[perto.length - 1]][0]) perto = [...perto].reverse();
-        variantes.push([`${rot} · termina perto da saída (atual do app)`, perto]);
+        variantes.push([`${rot} · termina perto da saída`, perto]);
+        variantes.push([`${rot} · APP: começa pela ponta mais rápida`, [...perto].reverse()[0] && (mat[0][perto[0]] <= mat[0][perto[perto.length - 1]] ? perto : [...perto].reverse())]);
+        variantes.push([`${rot} · APP com ⇅ Inverter`, (mat[0][perto[0]] <= mat[0][perto[perto.length - 1]] ? [...perto].reverse() : perto)]);
         // vizinho mais próximo a partir da parada mais longe
         let far = 1; for (let i = 2; i <= n; i++) if (mat[0][i] > mat[0][far]) far = i;
         const nn = [far]; const left = new Set(nodes.map(x => x.idx)); left.delete(far);

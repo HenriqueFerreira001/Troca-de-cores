@@ -161,6 +161,7 @@ async function main() {
 
     const fimModo = cfg.fim || 'livre';
     const perto = fimModo === 'perto' && !!start;
+    const livre = fimModo === 'livre' && !!start;   // igual ao app: caminho livre + sentido pela ponta mais rápida
     let end = null;
     if (fimModo === 'voltar' && start) end = start;
     else if (fimModo !== 'voltar' && fimModo !== 'livre' && fimModo !== 'perto') {
@@ -179,7 +180,7 @@ async function main() {
     // sentido que termina perto da base (igual ao app).
     let solveMatrix = matrix;
     let endIdx = end ? matrix.length - 1 : null;
-    if (perto) {
+    if (perto || livre) {
         const sub = matrix.slice(1).map(row => row.slice(1));
         solveMatrix = [new Array(sub.length + 1).fill(0)].concat(sub.map(row => [1e12, ...row]));
         endIdx = null;
@@ -198,6 +199,14 @@ async function main() {
         const a = order[0], z = order[order.length - 1];
         if (matrix[a][0] < matrix[z][0]) order = [...order].reverse();
     }
+    if (livre && order.length > 1) {
+        // Igual ao app: serviço longe da base → começa na ponta mais longe; perto → pela mais perto.
+        const maisPerto = Math.min(...order.map(i => matrix[0][i]));
+        const longe = cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60;
+        const a = order[0], z = order[order.length - 1];
+        if (longe ? matrix[a][0] < matrix[z][0] : matrix[0][z] < matrix[0][a]) order = [...order].reverse();
+    }
+    if (cfg.inverter) order = [...order].reverse();
 
     // Totais pela matriz real (índices sem o ponto virtual).
     const real = (i) => i - off;
