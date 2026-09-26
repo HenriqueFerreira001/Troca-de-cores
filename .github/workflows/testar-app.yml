@@ -1,0 +1,39 @@
+# Roda o app de verdade (navegador + mapa real) com as listas de teste e compara com o Zeo.
+name: Testar app real
+
+on:
+  push:
+    paths:
+      - 'app.js'
+      - 'enderecos.js'
+      - 'solver.js'
+      - 'index.html'
+      - 'testes-rota/**'
+      - 'tools/e2e-real.js'
+      - '.github/workflows/testar-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm i --no-save playwright@1 xlsx@0.18.5 && npx playwright install --with-deps chromium
+      - name: Abrir o app e testar
+        timeout-minutes: 40
+        run: |
+          set -o pipefail
+          python3 -m http.server 8080 >/dev/null 2>&1 &
+          sleep 2
+          node tools/e2e-real.js http://localhost:8080/ | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telas
+          path: /tmp/app-*.png
