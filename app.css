@@ -73,11 +73,13 @@ input, select, textarea { font: inherit; }
 
 /* ---------- Início / fim ---------- */
 .endpoints { background: var(--card); border-radius: var(--radius); border: 1px solid var(--line); }
-.endpoint { display: flex; align-items: center; gap: 10px; padding: 10px; }
+.endpoint { display: flex; align-items: center; gap: 8px; padding: 10px; flex-wrap: wrap; }
+.endpoint .small-btn { margin-left: auto; }
+.endpoint .small-btn ~ .small-btn { margin-left: 0; }
+.endpoint-body { flex: 1 1 calc(100% - 44px); min-width: 0; }
 .endpoint + .endpoint { border-top: 1px solid var(--line); }
-.endpoint-body { flex: 1; min-width: 0; }
 .endpoint-body small { color: var(--muted); font-size: 12px; }
-.endpoint-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+.endpoint-label { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .endpoint select { width: 100%; border: 0; background: transparent; padding: 2px 0; font-size: 15px; }
 .pin {
     flex: none; width: 28px; height: 28px; border-radius: 50%;
@@ -191,16 +193,22 @@ input, select, textarea { font: inherit; }
 
 /* ---------- Marcadores no mapa ---------- */
 .marker {
-    width: 28px; height: 28px; border-radius: 50%;
+    width: 34px; height: 34px; border-radius: 50%;
     display: grid; place-items: center;
-    color: #fff; font-weight: 700; font-size: 13px;
-    background: var(--primary); border: 2px solid #fff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+    color: #fff; font-weight: 800; font-size: 16px; line-height: 1;
+    background: var(--primary); border: 3px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .45);
+}
+.marker-pill {
+    padding: 4px 10px; border-radius: 13px; white-space: nowrap;
+    color: #fff; font-weight: 800; font-size: 12px; letter-spacing: .5px;
+    background: var(--ok); border: 3px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .45);
 }
 .marker.done { background: var(--ok); }
 .marker.failed { background: var(--bad); }
 .marker.next { background: var(--next); transform: scale(1.2); }
-.marker.warn { border-color: var(--next); }
+.marker.warn { border-color: var(--next); box-shadow: 0 0 0 3px var(--next), 0 2px 6px rgba(0, 0, 0, .45); }
 .marker.start { background: var(--ok); border-radius: 6px; }
 .marker.end { background: #202124; border-radius: 6px; }
 .marker.me { width: 18px; height: 18px; background: #4285f4; border: 3px solid #fff; }

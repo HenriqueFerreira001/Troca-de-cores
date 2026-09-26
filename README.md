@@ -9,8 +9,9 @@ Aplicativo para organizar as paradas do dia na **melhor ordem pelas ruas reais**
 
 ## Como usar
 
-1. **Início (opcional):** toque em **📍 GPS** (sua localização) ou em **Mudar** e digite o endereço.
-   Sem início, a rota começa pela parada que deixa o caminho mais curto.
+1. **Saída:** toda rota nova já começa da **base fixa** (a usina). Para trocar, toque em **Mudar**
+   ou arraste o pino **SAÍDA** no mapa; **☆ Fixar** deixa o ponto atual como base das próximas rotas.
+   Sem saída, a rota começa pela parada que deixa o caminho mais curto.
 2. **Fim:** escolha *Voltar ao início*, *Terminar na última parada* ou *Terminar em outro endereço*.
 3. **Adicione as paradas:**
    - digite o endereço, CEP ou coordenadas (ou fale no 🎤);

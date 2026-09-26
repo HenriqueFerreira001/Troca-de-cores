@@ -95,12 +95,13 @@
     // Estado (salvo no aparelho)
     // ======================================================================
     function newRoute(name) {
+        const base = state && state.settings && state.settings.base;
         return {
             id: uid(),
             name: name || 'Rota ' + new Date().toLocaleDateString('pt-BR'),
             createdAt: Date.now(),
-            start: null,          // { addr, lat, lng }
-            endMode: 'return',    // return | free | custom
+            start: base ? { ...base } : null,   // { addr, lat, lng } — começa pela base fixa, se houver
+            endMode: 'free',      // free (termina na última parada) | return | custom
             end: null,
             stops: [],            // { id, addr, lat, lng, note, phone, priority, status, doneAt, result, photos, warn }
             optimized: false,
@@ -118,9 +119,13 @@
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
         urgentMode: 'mark',       // mark: só destaca (rota sem voltas) | first: faz antes das outras
+        defaultCity: 'Embu das Artes, SP',
+        // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
+        base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
     };
 
-    let state = load();
+    let state = null;
+    state = load();
 
     function load() {
         try {
@@ -131,8 +136,9 @@
                 if (s.routes && s.routes[s.current]) return s;
             }
         } catch (e) { /* armazenamento indisponível */ }
+        state = { settings: { ...defaultSettings } };
         const r = newRoute();
-        return { current: r.id, routes: { [r.id]: r }, settings: { ...defaultSettings } };
+        return { current: r.id, routes: { [r.id]: r }, settings: state.settings };
     }
     function save() {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -623,7 +629,15 @@
     }
 
     function icon(cls, text) {
-        return L.divIcon({ className: '', html: `<div class="marker ${cls}">${esc(text)}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+        return L.divIcon({ className: '', html: `<div class="marker ${cls}">${esc(text)}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] });
+    }
+    function pill(cls, text) {
+        return L.divIcon({ className: '', html: `<div class="marker-pill ${cls}">${esc(text)}</div>`, iconSize: [60, 26], iconAnchor: [30, 13] });
+    }
+    // O início da rota é a base fixa? (mesmo endereço)
+    function isBase(p) {
+        const b = state.settings.base;
+        return !!(p && b && p.addr === b.addr);
     }
 
     function drawMap() {
@@ -634,12 +648,23 @@
         const next = nextStop(r);
 
         if (r.geometry) {
-            L.polyline(r.geometry, { color: '#1558d6', weight: 5, opacity: 0.75 }).addTo(lineLayer);
+            L.polyline(r.geometry, { color: '#fff', weight: 9, opacity: 0.9 }).addTo(lineLayer);
+            L.polyline(r.geometry, { color: '#1558d6', weight: 5, opacity: 0.9 }).addTo(lineLayer);
         } else if (r.optimized) {
             L.polyline(routePoints(r).map(p => [p.lat, p.lng]), { color: '#1558d6', weight: 3, dashArray: '6 8' }).addTo(lineLayer);
         }
 
-        if (r.start) L.marker([r.start.lat, r.start.lng], { icon: icon('start', 'I'), title: 'Início' }).addTo(layer);
+        if (r.start) {
+            const sm = L.marker([r.start.lat, r.start.lng], { icon: pill('start', 'SAÍDA'), title: 'Saída', draggable: true, zIndexOffset: 1000 }).addTo(layer);
+            sm.bindPopup(`<b>Saída:</b> ${esc(r.start.addr)}<br><small>Arraste para ajustar o ponto exato. Depois toque em ★ para fixar como base.</small>`);
+            sm.on('dragend', () => {
+                const ll = sm.getLatLng();
+                r.start = { ...r.start, lat: ll.lat, lng: ll.lng };
+                if (isBase(r.start)) state.settings.base = { ...r.start };
+                invalidate(); save(); render();
+                toast('Saída ajustada. Otimize de novo.');
+            });
+        }
         if (r.endMode === 'custom' && r.end) L.marker([r.end.lat, r.end.lng], { icon: icon('end', 'F'), title: 'Fim' }).addTo(layer);
 
         r.stops.forEach((s, i) => {
@@ -650,7 +675,7 @@
                 draggable: true,
                 title: s.addr,
             }).addTo(layer);
-            mk.bindPopup(`<b>${r.optimized ? (i + 1) + '. ' : ''}${esc(s.addr)}</b>${s.note ? '<br>' + esc(s.note) : ''}<br><small>Arraste o marcador para corrigir a posição</small>`);
+            mk.bindPopup(`<b>${r.optimized ? (i + 1) + '. ' : ''}${esc(s.addr)}</b>${s.note ? '<br>' + esc(s.note) : ''}${s.warn ? '<br><span style="color:#b06000">⚠ posição aproximada</span>' : ''}<br><small>Arraste o marcador para corrigir a posição</small>`);
             mk.on('dragend', () => {
                 const ll = mk.getLatLng();
                 s.lat = ll.lat; s.lng = ll.lng; s.warn = false;
@@ -828,7 +853,7 @@
             m: r.endMode,
             e: r.end && [r.end.addr, +r.end.lat.toFixed(6), +r.end.lng.toFixed(6)],
             o: r.optimized ? 1 : 0,
-            p: r.stops.map(s => [s.addr, s.lat != null ? +s.lat.toFixed(6) : null, s.lng != null ? +s.lng.toFixed(6) : null, s.note || '', s.phone || '', s.priority === 'normal' ? '' : s.priority]),
+            p: r.stops.map(s => [s.addr, s.lat != null ? +s.lat.toFixed(6) : null, s.lng != null ? +s.lng.toFixed(6) : null, s.note || '', s.phone || '', s.priority === 'normal' ? '' : s.priority, s.urgent ? 1 : 0]),
         };
         const bytes = new TextEncoder().encode(JSON.stringify(data));
         let bin = '';
@@ -851,7 +876,7 @@
             if (d.e) r.end = { addr: d.e[0], lat: d.e[1], lng: d.e[2] };
             r.stops = (d.p || []).map(p => ({
                 id: uid(), addr: p[0], lat: p[1], lng: p[2], note: p[3] || '', phone: p[4] || '',
-                priority: p[5] || 'normal', status: 'pending', doneAt: null, result: '', photos: [], warn: p[1] == null ? 'notfound' : false,
+                priority: p[5] || 'normal', urgent: !!p[6], status: 'pending', doneAt: null, result: '', photos: [], warn: p[1] == null ? 'notfound' : false,
             }));
             r.optimized = !!d.o;
             return r;
@@ -863,9 +888,9 @@
 
     function whatsappText(r) {
         const lines = [`*${r.name}* — ${r.stops.length} paradas`];
-        if (r.start) lines.push(`Início: ${r.start.addr}`);
+        if (r.start) lines.push(`Saída: ${r.start.addr}`);
         r.stops.forEach((s, i) => {
-            lines.push(`\n*${i + 1}.* ${s.addr}${s.note ? ' — ' + s.note : ''}`);
+            lines.push(`\n*${i + 1}.* ${s.urgent ? '🔴 ' : ''}${s.addr}${s.note ? ' — ' + s.note : ''}`);
             if (s.lat != null) lines.push(placeUrl(s));
         });
         const end = endPoint(r);
@@ -1408,6 +1433,10 @@
         $('#route-name').value = r.name;
         $('#start-label').textContent = r.start ? r.start.addr : 'Opcional — sem início, começa pela melhor parada';
         $('#btn-start-clear').classList.toggle('hidden', !r.start);
+        $('#btn-start-base').classList.toggle('hidden', !r.start);
+        $('#btn-start-base').textContent = isBase(r.start) ? '★ Base' : '☆ Fixar';
+        $('#btn-start-base').title = isBase(r.start) ? 'Esta é a base fixa (toque para deixar de ser)' : 'Fixar como base: toda rota nova começa daqui';
+        $('#btn-start-usebase').classList.toggle('hidden', !!r.start || !state.settings.base);
         $('#end-mode').options[0].textContent = r.start ? 'Voltar ao início' : 'Voltar ao início (defina o início)';
         $('#end-mode').value = r.endMode;
         $('#end-label').classList.toggle('hidden', r.endMode !== 'custom');
@@ -1532,6 +1561,18 @@
         };
         $('#btn-start-edit').onclick = () => setSearchTarget('start');
         $('#btn-start-clear').onclick = () => { route().start = null; invalidate(); save(); render(); toast('Sem início: a rota começa pela melhor parada.'); };
+        $('#btn-start-base').onclick = () => {
+            const r = route();
+            if (!r.start) return;
+            if (isBase(r.start)) { state.settings.base = null; toast('Base removida. Rotas novas começam sem saída fixa.'); }
+            else { state.settings.base = { ...r.start }; toast('Saída fixada como base: toda rota nova começa daqui.'); }
+            save(); render();
+        };
+        $('#btn-start-usebase').onclick = () => {
+            const b = state.settings.base;
+            if (!b) return;
+            route().start = { ...b }; invalidate(); save(); render(); fitMap();
+        };
         $('#btn-end-edit').onclick = () => setSearchTarget('end');
         $('#search-target-cancel').onclick = () => setSearchTarget(null);
         $('#end-mode').onchange = (e) => {
