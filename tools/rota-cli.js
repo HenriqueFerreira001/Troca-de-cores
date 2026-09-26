@@ -200,8 +200,11 @@ async function main() {
         if (matrix[a][0] < matrix[z][0]) order = [...order].reverse();
     }
     if (livre && order.length > 1) {
+        // Igual ao app: serviço longe da base → começa na ponta mais longe; perto → pela mais perto.
+        const maisPerto = Math.min(...order.map(i => matrix[0][i]));
+        const longe = cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60;
         const a = order[0], z = order[order.length - 1];
-        if (matrix[0][z] < matrix[0][a]) order = [...order].reverse();
+        if (longe ? matrix[a][0] < matrix[z][0] : matrix[0][z] < matrix[0][a]) order = [...order].reverse();
     }
     if (cfg.inverter) order = [...order].reverse();
 

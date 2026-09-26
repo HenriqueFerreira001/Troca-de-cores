@@ -628,9 +628,14 @@
         // O botão ⇅ Inverter troca o sentido e fica lembrado nesta rota.
         if ((perto || livre) && semGrupos && ordemFinal.length > 1) {
             const a = ordemFinal[0], z = ordemFinal[ordemFinal.length - 1];
+            // Serviço longe da base (a parada mais perto fica a mais de 25 min, ou 15 km):
+            // vai até a ponta mais longe e vem voltando, terminando o dia perto de casa.
+            // Serviço perto da base: começa pela ponta mais perto. (Mesmo padrão do Zeo.)
+            const maisPerto = Math.min(...ordemFinal.map(i => matrix[0][i]));
+            const longe = state.settings.optimizeBy === 'distance' ? maisPerto > 15000 : maisPerto > 25 * 60;
             const comecaPertoA = matrix[0][a] <= matrix[0][z];
-            if (livre && !comecaPertoA) ordemFinal = [...ordemFinal].reverse();
-            if (perto && matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
+            if (livre && !longe && !comecaPertoA) ordemFinal = [...ordemFinal].reverse();
+            if ((perto || (livre && longe)) && matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
             if (r.inverted) ordemFinal = [...ordemFinal].reverse();
         }
         r.stops = doneOrdered.concat(ordemFinal.map(i => todo[i - 1]));
