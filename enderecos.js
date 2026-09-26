@@ -175,6 +175,8 @@
             if (!melhor || nota > melhor.nota) melhor = { nome, pts, nota };
         }
         let pontos = melhor.pts;
+        // O bairro informado bateu com o cadastro? (serve para escolher a cidade certa)
+        const bairroOk = Math.max(...melhor.pts.map(x => x.bn)) >= 0.8;
 
         // 2) Ruas com o mesmo nome em lugares diferentes da cidade: fica só com o trecho
         //    que passa pelo bairro informado (e a continuação dele nos bairros vizinhos).
@@ -206,7 +208,7 @@
             const noBairro = exatos.filter(x => x.bn > 0);
             if (noBairro.length) exatos = noBairro;
             const x = exatos[0];
-            return { lat: x.lat, lng: x.lng, exact: true, good: true, found: label(x), score: c.score };
+            return { lat: x.lat, lng: x.lng, exact: true, good: true, bairroOk, found: label(x), score: c.score };
         }
 
         // 4) Número não cadastrado: estima entre o vizinho de baixo e o de cima
@@ -222,7 +224,7 @@
         return {
             lat: est.lat, lng: est.lng, exact: false,
             // até ~40 números do vizinho cadastrado, a estimativa cai na mesma quadra
-            good: est.good,
+            good: est.good, bairroOk,
             found: `${titulo(melhor.nome)}, ~${numero} (entre ${lo ? lo.n : '—'} e ${hi ? hi.n : '—'}) - ${titulo((lo || hi).bairro)}`,
             score: c.score,
         };
