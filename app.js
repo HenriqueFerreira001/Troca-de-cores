@@ -481,7 +481,7 @@
                 const src = A.map((_, k) => k).join(';');
                 const dst = (A === B ? A.map((_, k) => k) : B.map((_, k) => A.length + k)).join(';');
                 const url = `${OSRM}/table/v1/driving/${this.coordStr(pts)}?sources=${src}&destinations=${dst}&annotations=duration,distance`;
-                const data = await fetchJSON(url);
+                const data = await fetchJSON(url, {}, 5);
                 if (data.code !== 'Ok') throw new Error(data.message || data.code);
                 A.forEach((ai, r) => B.forEach((bi, c) => {
                     dur[ai][bi] = data.durations[r][c];
@@ -543,6 +543,11 @@
     // ======================================================================
     async function optimize() {
         const r = route();
+        if (r.optimized && r.stops.length > 1) {
+            const ok = await confirmDialog('Otimizar de novo?', `<p>Esta rota <b>já está organizada</b>. Se você otimizar de novo, a numeração pode mudar.</p>
+                <p class="muted">Só precisa otimizar de novo se você adicionou, tirou ou corrigiu alguma parada.</p>`, 'Otimizar de novo');
+            if (!ok) return;
+        }
         const stops = r.stops.filter(s => s.lat != null);
         const missing = r.stops.length - stops.length;
         if (missing) return toast(`${missing} parada(s) sem localização. Corrija antes de otimizar.`, 4000);
@@ -576,9 +581,12 @@
         try {
             m = await routing.matrix(points, p => busy('Calculando distâncias pelas ruas…', p * 0.8));
         } catch (e) {
+            // Sem as distâncias reais pelas ruas, NÃO mexe na ordem (em linha reta sairia errado).
             console.warn(e);
-            m = routing.approxMatrix(points);
-            approx = true;
+            busy(false);
+            await openDialog('Servidor das ruas não respondeu', `<p>Não foi possível calcular as distâncias pelas ruas agora (internet fraca ou servidor ocupado).</p>
+                <p><b>A ordem da rota não foi alterada.</b> Espere alguns segundos e toque em Otimizar de novo.</p>`, [{ label: 'OK', cls: 'primary' }]);
+            return;
         }
 
         busy('Encontrando a melhor ordem…', 0.85);
