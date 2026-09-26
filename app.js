@@ -575,7 +575,13 @@
 
         const doneOrdered = done.sort((a, b) => (a.doneAt || 0) - (b.doneAt || 0));
         const before = r.stops.map(s => s.id).join();
-        r.stops = doneOrdered.concat(order.map(i => todo[i - 1]));
+        // Se a ordem atual já é tão boa quanto a nova, mantém a atual: otimizar duas
+        // vezes não pode embaralhar a numeração à toa.
+        const idxAtual = todo.map((_, i) => i + 1);
+        const custoAtual = RouteSolver.fullCost(matrix, 0, idxAtual, endIdx);
+        const custoNovo = RouteSolver.fullCost(matrix, 0, order, endIdx);
+        const ordemFinal = r.optimized && custoAtual <= custoNovo + 1e-6 ? idxAtual : order;
+        r.stops = doneOrdered.concat(ordemFinal.map(i => todo[i - 1]));
         r.optimized = true;
         r.approx = approx;
 
@@ -1313,7 +1319,7 @@
             <label>${ok ? 'Anotação (opcional)' : 'Motivo'}</label>
             <input type="text" id="fd-note" placeholder="${ok ? 'Ex.: serviço feito, trocado 2 metros de cano' : 'Ex.: local fechado, sem acesso'}">
             <label>Fotos (comprovante)</label>
-            <input type="file" id="fd-photo" accept="image/*" capture="environment" multiple>
+            <input type="file" id="fd-photo" accept="image/*" multiple>
             <div class="photos" id="fd-photos"></div>
         `, [
             { label: 'Cancelar' },
