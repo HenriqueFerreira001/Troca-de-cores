@@ -175,16 +175,23 @@ async function main() {
     const off = start ? 0 : 1;
     if (!start) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(r => [1e12, ...r]));
     const nodes = ok.map((s, i) => ({ idx: i + 1, priority: 'normal' }));
-    // "perto": calcula como ida e volta (fim = 0) e numera sem a volta, no sentido que termina perto da base.
-    const endIdx = end ? matrix.length - 1 : (perto ? 0 : null);
+    // "perto": melhor caminho só entre as paradas (começo e fim livres), virado no
+    // sentido que termina perto da base (igual ao app).
+    let solveMatrix = matrix;
+    let endIdx = end ? matrix.length - 1 : null;
+    if (perto) {
+        const sub = matrix.slice(1).map(row => row.slice(1));
+        solveMatrix = [new Array(sub.length + 1).fill(0)].concat(sub.map(row => [1e12, ...row]));
+        endIdx = null;
+    }
     let order;
     if (start && cfg.maisPertoPrimeiro === true && nodes.length > 1) {
         // Igual ao app: parada 1 = a mais perto da saída; depois a melhor ordem.
         let first = 1;
         for (let i = 2; i <= nodes.length; i++) if (matrix[0][i] < matrix[0][first]) first = i;
-        order = [first].concat(Solver.solveWithPriorities(matrix, first, nodes.filter(n => n.idx !== first), endIdx, { timeLimitMs: 8000 }));
+        order = [first].concat(Solver.solveWithPriorities(solveMatrix, first, nodes.filter(n => n.idx !== first), endIdx, { timeLimitMs: 8000 }));
     } else {
-        order = Solver.solveWithPriorities(matrix, 0, nodes, endIdx, { timeLimitMs: 8000 });
+        order = Solver.solveWithPriorities(solveMatrix, 0, nodes, endIdx, { timeLimitMs: 8000 });
     }
 
     if (perto && order.length > 1) {

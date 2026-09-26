@@ -577,20 +577,28 @@
             priority: s.priority !== 'normal' ? s.priority
                 : (urgentFirst && s.urgent === 'alta' ? 'first' : urgentFirst && s.urgent === 'media' ? 'second' : 'normal'),
         }));
-        // "Perto da saída": calcula como se voltasse à base (fim = índice 0).
-        const endIdx = end ? matrix.length - 1 : (perto ? 0 : null);
+        // "Perto da saída": acha o melhor caminho só entre as paradas (começo e fim
+        // livres) e depois vira no sentido que termina perto da base. A equipe vai
+        // direto para a ponta mais longe e vem varrendo, sem pulo no final.
+        let solveMatrix = matrix;
+        let endIdx = end ? matrix.length - 1 : null;
+        if (perto && semGruposDe(nodes)) {
+            const sub = matrix.slice(1).map(row => row.slice(1));
+            solveMatrix = [new Array(sub.length + 1).fill(0)].concat(sub.map(row => [1e12, ...row]));
+            endIdx = null;
+        }
         let order;
-        const semGrupos = nodes.every(n => n.priority === 'normal');
+        const semGrupos = semGruposDe(nodes);
         if (state.settings.nearestFirst && origin && semGrupos && todo.length > 1) {
             // Parada 1 = a mais perto da saída (pelas ruas). Daí em diante, a melhor ordem.
             let first = 1;
             for (let i = 2; i <= todo.length; i++) if (matrix[0][i] < matrix[0][first]) first = i;
             const resto = nodes.filter(n => n.idx !== first);
-            order = [first].concat(RouteSolver.solveWithPriorities(matrix, first, resto, endIdx, {
+            order = [first].concat(RouteSolver.solveWithPriorities(solveMatrix, first, resto, endIdx, {
                 timeLimitMs: Math.min(4000, 500 + todo.length * 30),
             }));
         } else {
-            order = RouteSolver.solveWithPriorities(matrix, 0, nodes, endIdx, {
+            order = RouteSolver.solveWithPriorities(solveMatrix, 0, nodes, endIdx, {
                 timeLimitMs: Math.min(4000, 500 + todo.length * 30),
             });
         }
@@ -600,10 +608,10 @@
         // Se a ordem atual já é tão boa quanto a nova, mantém a atual: otimizar duas
         // vezes não pode embaralhar a numeração à toa.
         const idxAtual = todo.map((_, i) => i + 1);
-        const custoAtual = RouteSolver.fullCost(matrix, 0, idxAtual, endIdx);
-        const custoNovo = RouteSolver.fullCost(matrix, 0, order, endIdx);
+        const custoAtual = RouteSolver.fullCost(solveMatrix, 0, idxAtual, endIdx);
+        const custoNovo = RouteSolver.fullCost(solveMatrix, 0, order, endIdx);
         let ordemFinal = r.optimized && custoAtual <= custoNovo + 1e-6 ? idxAtual : order;
-        // Um circuito pode ser percorrido nos dois sentidos: escolhe o que termina
+        // O caminho pode ser percorrido nos dois sentidos: escolhe o que termina
         // mais perto da saída, para a equipe acabar o dia perto da base.
         if (perto && semGrupos && ordemFinal.length > 1) {
             const a = ordemFinal[0], z = ordemFinal[ordemFinal.length - 1];
@@ -624,6 +632,8 @@
         else if (before === r.stops.map(s => s.id).join()) toast('A ordem atual já era a melhor.');
         else toast(exact ? 'Rota otimizada — esta é a melhor ordem possível.' : 'Rota otimizada.');
     }
+
+    const semGruposDe = (nodes) => nodes.every(n => n.priority === 'normal');
 
     // Recalcula trajeto e tempos na ordem atual (sem mudar a ordem).
     async function computePath() {
