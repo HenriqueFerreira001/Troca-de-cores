@@ -249,4 +249,5 @@ async function main() {
     console.log(out.join('\n'));
 }
 
-main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+if (require.main === module) main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+module.exports = { geocode, osrmTable, ibgeCity, nominatim, expand, km, min };

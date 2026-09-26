@@ -8,6 +8,7 @@ on:
       - 'testes-rota/**'
       - 'tools/rota-cli.js'
       - 'enderecos.js'
+      - 'tools/variantes.js'
       - 'dados/cnefe/**'
       - 'solver.js'
   workflow_dispatch:
@@ -28,4 +29,9 @@ jobs:
         run: |
           for f in testes-rota/*.json; do
             node tools/rota-cli.js "$f" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Comparar variantes com o Zeo
+        run: |
+          for f in testes-rota/*.json; do
+            if grep -q compararCom "$f"; then node tools/variantes.js "$f" | tee -a "$GITHUB_STEP_SUMMARY"; fi
           done
