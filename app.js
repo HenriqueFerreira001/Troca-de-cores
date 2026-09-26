@@ -559,6 +559,9 @@
         const origin = r.startedAt && lastDone ? lastDone : r.start;
         const end = endPoint(r);
         const perto = r.endMode === 'near' && !!origin;
+        // "Última parada" também usa o caminho livre entre as paradas (como o Zeo) e
+        // depois escolhe o sentido: começa pela ponta mais rápida de chegar da saída.
+        const livre = r.endMode === 'free' && !!origin;
 
         const points = origin ? [origin, ...todo] : [...todo];
         if (end) points.push(end);
@@ -589,7 +592,7 @@
         // direto para a ponta mais longe e vem varrendo, sem pulo no final.
         let solveMatrix = matrix;
         let endIdx = end ? matrix.length - 1 : null;
-        if (perto && semGruposDe(nodes)) {
+        if ((perto || livre) && semGruposDe(nodes)) {
             const sub = matrix.slice(1).map(row => row.slice(1));
             solveMatrix = [new Array(sub.length + 1).fill(0)].concat(sub.map(row => [1e12, ...row]));
             endIdx = null;
@@ -615,14 +618,20 @@
         // Se a ordem atual já é tão boa quanto a nova, mantém a atual: otimizar duas
         // vezes não pode embaralhar a numeração à toa.
         const idxAtual = todo.map((_, i) => i + 1);
-        const custoAtual = RouteSolver.fullCost(solveMatrix, 0, idxAtual, endIdx);
-        const custoNovo = RouteSolver.fullCost(solveMatrix, 0, order, endIdx);
+        // Compara nos dois sentidos: inverter não é "piorar".
+        const custoAtual = Math.min(RouteSolver.fullCost(solveMatrix, 0, idxAtual, endIdx), RouteSolver.fullCost(solveMatrix, 0, [...idxAtual].reverse(), endIdx));
+        const custoNovo = Math.min(RouteSolver.fullCost(solveMatrix, 0, order, endIdx), RouteSolver.fullCost(solveMatrix, 0, [...order].reverse(), endIdx));
         let ordemFinal = r.optimized && custoAtual <= custoNovo + 1e-6 ? idxAtual : order;
-        // O caminho pode ser percorrido nos dois sentidos: escolhe o que termina
-        // mais perto da saída, para a equipe acabar o dia perto da base.
-        if (perto && semGrupos && ordemFinal.length > 1) {
+        // O caminho pode ser percorrido nos dois sentidos:
+        //  - "última parada": começa pela ponta mais rápida de chegar da saída;
+        //  - "perto da saída": começa pela ponta mais longe e termina perto da base.
+        // O botão ⇅ Inverter troca o sentido e fica lembrado nesta rota.
+        if ((perto || livre) && semGrupos && ordemFinal.length > 1) {
             const a = ordemFinal[0], z = ordemFinal[ordemFinal.length - 1];
-            if (matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
+            const comecaPertoA = matrix[0][a] <= matrix[0][z];
+            if (livre && !comecaPertoA) ordemFinal = [...ordemFinal].reverse();
+            if (perto && matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
+            if (r.inverted) ordemFinal = [...ordemFinal].reverse();
         }
         r.stops = doneOrdered.concat(ordemFinal.map(i => todo[i - 1]));
         r.optimized = true;
@@ -1607,6 +1616,7 @@
 
         $('#btn-optimize').disabled = !r.stops.length;
         $('#btn-reorder').classList.toggle('active', reorderMode);
+        $('#btn-invert').disabled = !r.optimized || r.stops.filter(s => s.status === 'pending').length < 2;
 
         // Próxima parada
         const next = nextStop(r);
@@ -1677,6 +1687,21 @@
         $('#btn-share').onclick = shareDialog;
         $('#btn-optimize').onclick = optimize;
         $('#btn-export').onclick = exportCSV;
+        $('#btn-invert').onclick = async () => {
+            const r = route();
+            const done = r.stops.filter(s => s.status !== 'pending');
+            const todo = r.stops.filter(s => s.status === 'pending');
+            if (todo.length < 2) return;
+            r.stops = done.concat(todo.reverse());
+            r.inverted = !r.inverted;
+            r.optimized = true;
+            r.legs = null; r.geometry = null;
+            save(); render();
+            busy('Desenhando o trajeto…', 0.5);
+            await computePath();
+            busy(false); render(); fitMap();
+            toast('Sentido invertido: a parada 1 agora é a outra ponta.');
+        };
         $('#btn-reorder').onclick = () => {
             reorderMode = !reorderMode;
             const r = route();
