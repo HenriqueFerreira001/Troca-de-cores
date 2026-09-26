@@ -199,6 +199,12 @@ input, select, textarea { font: inherit; }
     background: var(--primary); border: 3px solid #fff;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .45);
 }
+.pin path { fill: #d93025; stroke: #fff; stroke-width: 2.5; paint-order: stroke; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
+.pin.urgent path { fill: #b3000c; stroke: #ffd600; stroke-width: 3; }
+.pin.done path { fill: var(--ok); }
+.pin.failed path { fill: #5f6b7a; }
+.pin.next path { fill: var(--next); }
+.pin.warn path { stroke: #ff9800; stroke-width: 3.5; }
 .marker-pill {
     padding: 4px 10px; border-radius: 13px; white-space: nowrap;
     color: #fff; font-weight: 800; font-size: 12px; letter-spacing: .5px;

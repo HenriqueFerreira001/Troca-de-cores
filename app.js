@@ -388,26 +388,57 @@
         async find(parts, cityName) {
             const city = await this.forCity(cityName);
             if (!city) return null;
+            return this.findIn(city, parts);
+        },
+        async findIn(city, parts) {
             const r = await Enderecos.find(city, parts).catch(() => null);
             if (!r || r.ambiguous || r.lat == null) return null;
-            return { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: r.found, source: 'IBGE' };
+            return {
+                lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: r.found, source: 'IBGE',
+                city: `${city.cidade}, ${city.uf}`,
+                // nota para escolher entre cidades: número exato + bairro batendo é o melhor
+                nota: (r.exact ? 4 : r.good ? 2 : 1) + (r.bairroOk ? 3 : 0),
+            };
         },
-        // Estimativa fraca do IBGE: tenta o mapa gratuito; se ele achar o número exato, usa; senão fica o IBGE.
+        // Sem cidade informada: procura em todas as cidades com cadastro e fica com a melhor.
+        async findAny(parts) {
+            const list = await this.list();
+            const achados = [];
+            for (const c of list) {
+                const city = await this.forCity(c.cidade);
+                if (!city) continue;
+                const r = await this.findIn(city, parts);
+                if (r) achados.push(r);
+            }
+            if (!achados.length) return null;
+            achados.sort((a, b) => b.nota - a.nota);
+            const [best, second] = achados;
+            // Duas cidades com a mesma rua e nada que desempate (bairro ou número exato):
+            // não dá para afirmar a cidade, melhor deixar em branco do que chutar.
+            if (second && best.nota - second.nota < 2 && !(best.nota >= 4)) return null;
+            return best;
+        },
+        // Estimativa fraca do IBGE: tenta o mapa gratuito; se ele achar o número exato
+        // e perto do trecho do IBGE (até 3 km), usa; senão fica o IBGE.
         async melhorar(ibge, buscaMapa) {
             if (!ibge || ibge.precise) return ibge;
             const m = await buscaMapa().catch(() => null);
-            return m && m.precise !== false ? m : ibge;
+            return m && m.precise !== false && haversine(m, ibge) < 3000 ? m : ibge;
         },
     };
 
     // Melhor busca disponível: IBGE (número exato) e, se não achar, o mapa gratuito.
     async function locate(item) {
-        const city = item.parts?.city || state.settings.defaultCity || '';
+        const cityGiven = item.parts?.city || '';
         const parts = item.parts || Enderecos.parse(item.addr);
+        // Cidade informada: só nela. Sem cidade: descobre pelo cadastro do IBGE.
+        const viaIbge = await (cityGiven ? ibge.find(parts, cityGiven) : ibge.findAny(parts)).catch(() => null);
+        const city = cityGiven || (viaIbge && viaIbge.city) || '';
+        if (!city) return null;   // sem cidade e sem IBGE: não chuta no mapa gratuito
+        const [c, uf] = city.split(/\s*,\s*/);
         const viaMapa = () => (item.parts
-            ? geo.searchParts(item.parts)
-            : geo.search(item.search || (city && !item.addr.toLowerCase().includes(city.split(',')[0].toLowerCase()) ? `${item.addr}, ${city}` : item.addr)));
-        const viaIbge = await ibge.find(parts, city).catch(() => null);
+            ? geo.searchParts({ ...item.parts, city: c, uf: item.parts.uf || uf || '' })
+            : geo.search(item.search || (!item.addr.toLowerCase().includes(c.toLowerCase()) ? `${item.addr}, ${city}` : item.addr)));
         if (viaIbge) return ibge.melhorar(viaIbge, viaMapa);
         return viaMapa();
     }
@@ -628,8 +659,18 @@
         });
     }
 
+    // Pino de localização (gota) com o número dentro. A ponta fica exatamente no endereço.
     function icon(cls, text) {
-        return L.divIcon({ className: '', html: `<div class="marker ${cls}">${esc(text)}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] });
+        const t = String(text);
+        const fs = t.length >= 3 ? 11 : t.length === 2 ? 13 : 15;
+        return L.divIcon({
+            className: '',
+            html: `<svg class="pin ${cls}" viewBox="0 0 36 48" width="36" height="48" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 46.5 C18 46.5 3.5 27.5 3.5 17 A14.5 14.5 0 1 1 32.5 17 C32.5 27.5 18 46.5 18 46.5 Z"/>
+                <text x="18" y="22" text-anchor="middle" font-size="${fs}" font-weight="800" font-family="system-ui, Arial, sans-serif" fill="#fff">${esc(t)}</text>
+            </svg>`,
+            iconSize: [36, 48], iconAnchor: [18, 46], popupAnchor: [0, -40],
+        });
     }
     function pill(cls, text) {
         return L.divIcon({ className: '', html: `<div class="marker-pill ${cls}">${esc(text)}</div>`, iconSize: [60, 26], iconAnchor: [30, 13] });
@@ -768,13 +809,31 @@
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;
             addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, urgent: it.urgent, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
         }
+        const far = checkFar(route());
         busy(false);
         render();
         fitMap();
         let msg = `${found} endereço(s) localizados.`;
         if (approx) msg += ` ${approx} com posição aproximada (confira no mapa).`;
         if (notFound) msg += ` ${notFound} não encontrado(s) — toque neles para corrigir.`;
-        toast(msg, 6000);
+        if (far) msg += ` ⚠ ${far} parada(s) muito longe das outras: confira antes de otimizar.`;
+        toast(msg, 8000);
+    }
+
+    // Parada a mais de 25 km do "miolo" das outras: quase sempre é endereço achado na cidade errada.
+    function checkFar(r) {
+        const pts = r.stops.filter(s => s.lat != null);
+        if (pts.length < 3) return 0;
+        const med = (arr) => { const a = [...arr].sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+        const c = { lat: med(pts.map(p => p.lat)), lng: med(pts.map(p => p.lng)) };
+        let n = 0;
+        for (const s of pts) {
+            const longe = haversine(s, c) > 25000;
+            if (longe) { s.warn = 'far'; n++; }
+            else if (s.warn === 'far') s.warn = false;
+        }
+        if (n) save();
+        return n;
     }
 
     // Converte texto (uma parada por linha) em itens.
@@ -1033,19 +1092,30 @@
     // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
     async function askCity(items, title) {
         const urgentN = items.filter(i => i.urgent).length;
+        const cidadesIbge = await ibge.list();
         const html = `<p>Encontrei <b>${items.length}</b> endereço(s)${urgentN ? `, sendo <b>${urgentN}</b> com prioridade (linha vermelha)` : ''}. Primeiros:</p>
             <ul>${items.slice(0, 5).map(i => `<li>${esc(i.addr)}</li>`).join('')}</ul>
-            ${items.hasCity ? '' : `<label>Cidade destes endereços (a planilha não tem cidade)</label>
-            <input type="text" id="imp-city" placeholder="Ex.: Embu das Artes, SP" value="${esc(state.settings.defaultCity || '')}">
-            <p class="muted">Sem a cidade, uma rua com o mesmo nome em outra cidade pode ser escolhida.</p>`}`;
+            ${items.hasCity ? '' : `<label>Cidade destes endereços</label>
+            <select id="imp-city-sel">
+                <option value="">Descobrir sozinho (cadastro do IBGE: ${esc(cidadesIbge.map(c => c.cidade).join(', ') || 'nenhuma')})</option>
+                ${cidadesIbge.map(c => `<option value="${esc(c.cidade + ', ' + c.uf)}">${esc(c.cidade + ', ' + c.uf)}</option>`).join('')}
+                <option value="outra">Outra cidade…</option>
+            </select>
+            <input type="text" id="imp-city" class="hidden" placeholder="Ex.: Taboão da Serra, SP" value="${esc(state.settings.defaultCity || '')}">
+            <p class="muted">No automático, cada endereço é procurado em todas as cidades com cadastro e só entra quando rua e bairro batem.</p>`}`;
         let city = '';
+        setTimeout(() => {
+            const sel = $('#imp-city-sel');
+            if (sel) sel.onchange = () => $('#imp-city').classList.toggle('hidden', sel.value !== 'outra');
+        }, 0);
         const ok = await openDialog(title, html, [
             { label: 'Cancelar', value: false },
             {
                 label: 'Importar', cls: 'primary', value: true, onClick: () => {
                     if (items.hasCity) return;
-                    city = $('#imp-city').value.trim();
-                    if (!city) { toast('Informe a cidade.'); return false; }
+                    const sel = $('#imp-city-sel').value;
+                    city = sel === 'outra' ? $('#imp-city').value.trim() : sel;
+                    if (sel === 'outra' && !city) { toast('Informe a cidade.'); return false; }
                 },
             },
         ]);
@@ -1456,6 +1526,8 @@
         const warns = [];
         const nf = r.stops.filter(s => s.warn === 'notfound').length;
         const ap = r.stops.filter(s => s.warn === 'approx').length;
+        const far = r.stops.filter(s => s.warn === 'far');
+        if (far.length) warns.push(`🚨 ${far.length} parada(s) muito longe das outras — provavelmente endereço na cidade errada: ${far.map(s => s.addr).join('; ')}. Toque nela para corrigir ou excluir.`);
         if (nf) warns.push(`⚠ ${nf} endereço(s) não encontrado(s). Toque neles para corrigir.`);
         if (ap) warns.push(`⚠ ${ap} endereço(s) com posição aproximada (laranja no mapa). Confira e arraste o marcador se precisar.`);
         if (r.approx && r.optimized) warns.push('⚠ Ordem calculada sem o servidor de ruas (sem internet). Otimize de novo com conexão.');
@@ -1492,6 +1564,7 @@
             const flags = [
                 s.warn === 'notfound' ? '<span class="flag flag-warn">não encontrado</span>' : '',
                 s.warn === 'approx' ? '<span class="flag flag-warn">posição aproximada</span>' : '',
+                s.warn === 'far' ? '<span class="flag flag-failed">🚨 muito longe das outras</span>' : '',
                 s.urgent ? '<span class="flag flag-urgent">🔴 prioridade</span>' : '',
                 s.priority === 'first' ? '<span class="flag flag-first">fazer primeiro</span>' : '',
                 s.priority === 'last' ? '<span class="flag flag-last">deixar pro final</span>' : '',
