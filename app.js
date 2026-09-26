@@ -886,12 +886,19 @@
         const principal = Object.keys(contagem).sort((a, b) => contagem[b] - contagem[a])[0];
         if (principal) {
             const [c, uf] = principal.split(/\s*,\s*/);
+            const maioria = contagem[principal] > items.length / 2;
             for (let i = 0; i < items.length; i++) {
-                if (results[i] || items[i].lat != null) continue;
+                if (items[i].lat != null) continue;
+                // Achada em outra cidade, mas a lista é quase toda da principal
+                // (ex.: Rua Dom Pedro I existe em Embu e em SP): confere na principal.
+                const outraCidade = results[i] && results[i].city && results[i].city !== principal && maioria;
+                if (results[i] && !outraCidade) continue;
                 busy(`Conferindo endereços em ${c}…`, 0.9 + 0.1 * i / items.length);
                 const it = items[i];
                 const parts = { ...(it.parts || Enderecos.parse(it.addr)), city: c, uf: uf || '' };
-                try { results[i] = await locate({ ...it, parts }); } catch (e) { results[i] = null; }
+                let r2 = null;
+                try { r2 = await locate({ ...it, parts }); } catch (e) { r2 = null; }
+                if (r2 || !results[i]) results[i] = r2;
             }
         }
         for (let i = 0; i < items.length; i++) {
