@@ -140,7 +140,9 @@ async function main() {
     let start = null;
     if (cfg.inicio) {
         const ini = typeof cfg.inicio === 'string' ? { ...Enderecos.parse(cfg.inicio), texto: cfg.inicio } : { street: cfg.inicio.rua, number: cfg.inicio.numero, bairro: cfg.inicio.bairro, texto: cfg.inicio.nome || cfg.inicio.rua };
-        const r = city ? await Enderecos.find(city, ini) : null;
+        // O início pode ser em outra cidade (ex.: base em Embu, paradas em São Paulo).
+        const cityIni = cfg.inicio.cidade ? ibgeCity(cfg.inicio.cidade) : city;
+        const r = cityIni ? await Enderecos.find(cityIni, ini) : null;
         if (r && r.lat != null) start = { lat: r.lat, lng: r.lng, label: `${ini.texto} (${r.found})` };
         else {
             const d = await nominatim({ q: `${expand(ini.texto)}, ${cfg.cidade}, ${cfg.uf}` });

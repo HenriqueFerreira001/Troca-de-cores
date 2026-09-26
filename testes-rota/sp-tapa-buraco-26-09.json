@@ -1,0 +1,179 @@
+{
+  "nome": "Tapa buraco 26/09 - 20 OS saindo da usina (comparar com Zeo)",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "otimizarPor": "distancia",
+  "inicio": {
+    "nome": "PRF Embu Usina de Asfalto",
+    "rua": "ESTRADA VELHA DA PEDREIRA",
+    "numero": "",
+    "bairro": "PARQUE SAO LEONARDO",
+    "cidade": "Embu das Artes"
+  },
+  "fim": "livre",
+  "compararNome": "Zeo",
+  "compararCom": [
+    "2637237535",
+    "2637672553",
+    "2637764572",
+    "2638189021",
+    "2638330416",
+    "2637666122",
+    "2637664579",
+    "2637664904",
+    "2638126737",
+    "2638126755",
+    "2638126864",
+    "2638126801",
+    "2638126776",
+    "2638126893",
+    "2638126918",
+    "2638127059",
+    "2638065111",
+    "2637237791",
+    "2637830641",
+    "2637883483"
+  ],
+  "paradas": [
+    {
+      "os": "2637237535",
+      "rua": "RUA EUGENIA BRANDAO",
+      "numero": "8",
+      "bairro": "JD PEROLA",
+      "prioridade": true
+    },
+    {
+      "os": "2637237791",
+      "rua": "RUA GIBOIUCUS",
+      "numero": "229",
+      "bairro": "V IOLANDA",
+      "prioridade": true
+    },
+    {
+      "os": "2637672553",
+      "rua": "RUA EUGENIA BRANDAO",
+      "numero": "121",
+      "bairro": "CID POPULAR",
+      "prioridade": true
+    },
+    {
+      "os": "2637666122",
+      "rua": "RUA MERCADO DE FERRO",
+      "numero": "112",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637664579",
+      "rua": "RUA IBITIPOCA",
+      "numero": "39",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637664904",
+      "rua": "RUA QUINTA DA TORRE",
+      "numero": "103",
+      "bairro": "GUAIANAZES",
+      "prioridade": true
+    },
+    {
+      "os": "2637764572",
+      "rua": "RUA CACHOEIRA DO CAMPO GRANDE",
+      "numero": "133",
+      "bairro": "BARRO BRANCO 2",
+      "prioridade": true
+    },
+    {
+      "os": "2637830641",
+      "rua": "AVENIDA CAITITU",
+      "numero": "1295",
+      "bairro": "CID AE CARVALHO",
+      "prioridade": false
+    },
+    {
+      "os": "2638065111",
+      "rua": "TRAVESSA ANTONIO FLAVIA",
+      "numero": "17",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2637883483",
+      "rua": "RUA MACHADO DE CASTRO",
+      "numero": "272",
+      "bairro": "JD IPANEMA",
+      "prioridade": false
+    },
+    {
+      "os": "2638330416",
+      "rua": "RUA LOURENCO BENACCI",
+      "numero": "60",
+      "bairro": "CID TIRADENTES",
+      "prioridade": false
+    },
+    {
+      "os": "2638126737",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "55",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126755",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "77",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126776",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "345",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638126801",
+      "rua": "RUA WILSON ACKEL",
+      "numero": "323",
+      "bairro": "V NANCI",
+      "prioridade": false
+    },
+    {
+      "os": "2638189021",
+      "rua": "AVENIDA DOS TEXTEIS",
+      "numero": "2",
+      "bairro": "CID TIRADENTES",
+      "prioridade": true
+    },
+    {
+      "os": "2638126864",
+      "rua": "RUA TREVO DE BORGONHA",
+      "numero": "184",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638127059",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "133",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638126893",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "39",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    },
+    {
+      "os": "2638126918",
+      "rua": "RUA CAPITAO ANTONIO JOAQUIM DO CARMO",
+      "numero": "41",
+      "bairro": "GUAIANAZES",
+      "prioridade": false
+    }
+  ]
+}
