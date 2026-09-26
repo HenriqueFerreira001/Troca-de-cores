@@ -868,14 +868,34 @@
         if (items.length > room) { toast(`Só cabem mais ${room} paradas nesta rota.`); items = items.slice(0, room); }
 
         let found = 0, notFound = 0, approx = 0;
+        const results = [];
         for (let i = 0; i < items.length; i++) {
             const it = items[i];
-            busy(`Localizando endereços… ${i + 1} de ${items.length}`, i / items.length);
+            busy(`Localizando endereços… ${i + 1} de ${items.length}`, i / items.length * 0.9);
             let res = null;
             if (it.lat != null && it.lng != null) res = { lat: it.lat, lng: it.lng, precise: true };
             else {
                 try { res = await locate(it); } catch (e) { res = null; }
             }
+            results.push(res);
+        }
+        // Rua com o mesmo nome em duas cidades (ex.: Rua Flamengo em Embu e em SP):
+        // procura de novo na cidade onde está a maior parte da lista.
+        const contagem = {};
+        results.forEach(r => { if (r && r.city) contagem[r.city] = (contagem[r.city] || 0) + 1; });
+        const principal = Object.keys(contagem).sort((a, b) => contagem[b] - contagem[a])[0];
+        if (principal) {
+            const [c, uf] = principal.split(/\s*,\s*/);
+            for (let i = 0; i < items.length; i++) {
+                if (results[i] || items[i].lat != null) continue;
+                busy(`Conferindo endereços em ${c}…`, 0.9 + 0.1 * i / items.length);
+                const it = items[i];
+                const parts = { ...(it.parts || Enderecos.parse(it.addr)), city: c, uf: uf || '' };
+                try { results[i] = await locate({ ...it, parts }); } catch (e) { results[i] = null; }
+            }
+        }
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i], res = results[i];
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;
             addStop({ addr: it.addr || res?.addr, note: it.note, phone: it.phone, priority: it.priority, urgent: it.urgent, lat: res?.lat, lng: res?.lng, precise: res?.precise }, true);
         }

@@ -47,6 +47,8 @@ async function main() {
         await page.waitForFunction((n) => document.querySelectorAll('#stops li').length === n, cfg.paradas.length, { timeout: 600000 });
         await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 600000 });
         const avisos = (await page.textContent('#warnings')).trim();
+        const semLugar = await page.$$eval('#stops li', ls => ls.filter(li => /não encontrado/.test(li.textContent)).map(li => li.querySelector('.addr').textContent));
+        if (semLugar.length) console.error('SEM LOCALIZAÇÃO:', semLugar.join(' | '));
 
         await page.click('#btn-optimize');
         await page.waitForFunction(() => document.querySelector('#stops li .num') && document.querySelector('#stops li .num').textContent === '1', null, { timeout: 180000 });
