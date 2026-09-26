@@ -55,6 +55,17 @@ async function main() {
         await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 180000 });
         await page.waitForTimeout(1500);
 
+        // Otimizar de novo (confirmando) não pode mudar a ordem.
+        const ordem1 = await page.$$eval('#stops li .addr', els => els.map(e => e.textContent).join('|'));
+        await page.click('#btn-optimize');
+        await page.waitForSelector('#dialog[open]');
+        await page.click('#dialog-actions button.primary');
+        await page.waitForTimeout(500);
+        await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 180000 });
+        await page.waitForTimeout(1500);
+        const ordem2 = await page.$$eval('#stops li .addr', els => els.map(e => e.textContent).join('|'));
+        const estavel = ordem1 === ordem2;
+
         const saida = await page.textContent('#start-label');
         const resumo = (await page.textContent('#summary')).replace(/\s+/g, ' ').trim();
         const lista = await page.$$eval('#stops li', ls => ls.map(li => ({
@@ -72,6 +83,7 @@ async function main() {
         out.push(`- Saída na tela: ${saida}`);
         out.push(`- Resumo: ${resumo}`);
         if (avisos) out.push(`- Avisos: ${avisos}`);
+        out.push(`- Otimizar 2 vezes dá a mesma ordem: **${estavel ? 'sim' : 'NÃO'}**`);
         out.push(`- Posições iguais ao Zeo: **${iguais} de ${zeo.length}** · ordem parecida: **${Math.round(ok / tot * 100)}%**`);
         if (erros.length) out.push(`- Erros na página: ${erros.join(' | ')}`);
         out.push('');

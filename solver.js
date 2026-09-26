@@ -232,11 +232,11 @@
         }
 
         // Número fixo de tentativas (e não tempo): a mesma lista dá sempre a mesma
-        // ordem, em qualquer celular. O tempo limite é só uma segurança.
+        // ordem, em qualquer celular, rápido ou lento. (60 s é só uma trava de segurança.)
         const maxIter = Math.max(400, Math.min(6000, Math.round(60000 / stops.length)));
         let cur = best, curC = bestC;
         let iter = 0;
-        while (iter < maxIter && now() - t0 < timeLimitMs * 4) {
+        while (iter < maxIter && now() - t0 < 60000) {
             iter++;
             const cand = localSearch(matrix, start, doubleBridge(cur, rand), end);
             const v = fullCost(matrix, start, cand, end);
