@@ -177,6 +177,8 @@ input, select, textarea { font: inherit; }
 .stop .flag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; margin-top: 4px; margin-right: 4px; }
 .flag-warn { background: var(--warn-bg); color: var(--warn); }
 .flag-urgent { background: #fce8e6; color: var(--bad); font-weight: 600; }
+.flag-media { background: #fff3cd; color: #8a6100; font-weight: 600; }
+.stop.media { border-left: 5px solid #ffc107; }
 .stop.urgent { border-left: 5px solid var(--bad); }
 .marker.urgent { box-shadow: 0 0 0 3px var(--bad), 0 1px 4px rgba(0, 0, 0, .4); }
 .flag-first { background: #e6f4ea; color: var(--ok); }
@@ -201,6 +203,8 @@ input, select, textarea { font: inherit; }
 }
 .pin path { fill: #d93025; stroke: #fff; stroke-width: 2.5; paint-order: stroke; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
 .pin.urgent path { fill: #b3000c; stroke: #ffd600; stroke-width: 3; }
+.pin.media path { fill: #ffb300; }
+.pin.media text { fill: #1b1f24; }
 .pin.done path { fill: var(--ok); }
 .pin.failed path { fill: #5f6b7a; }
 .pin.next path { fill: var(--next); }
