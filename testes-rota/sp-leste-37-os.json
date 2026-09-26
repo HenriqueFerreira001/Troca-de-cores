@@ -2,7 +2,7 @@
   "nome": "São Paulo zona leste - 37 OS (10 com prioridade)",
   "cidade": "São Paulo",
   "uf": "SP",
-  "otimizarPor": "distancia",
+  "otimizarPor": "tempo",
   "paradas": [
     {
       "os": "2637440618",

@@ -2,7 +2,7 @@
   "nome": "Embu das Artes - 20 OS saindo da usina (mesmo início do Zeo) - menor distância",
   "cidade": "Embu das Artes",
   "uf": "SP",
-  "otimizarPor": "distancia",
+  "otimizarPor": "tempo",
   "paradas": [
     {
       "os": "2630022976",
@@ -131,7 +131,7 @@
     "numero": "",
     "bairro": "PARQUE SAO LEONARDO"
   },
-  "fim": "perto",
+  "fim": "livre",
   "compararNome": "Zeo",
   "compararCom": [
     "2634694116",
