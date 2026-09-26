@@ -250,11 +250,11 @@
 
     /*
      * Resolve considerando prioridades.
-     * nodes: lista de { idx, priority: 'first' | 'normal' | 'last' }
-     * As paradas "first" vêm antes de todas, as "last" depois de todas.
+     * nodes: lista de { idx, priority: 'first' | 'second' | 'normal' | 'last' }
+     * Ordem dos grupos: first, second, normal, last.
      */
     function solveWithPriorities(matrix, start, nodes, end, opts) {
-        const groups = ['first', 'normal', 'last']
+        const groups = ['first', 'second', 'normal', 'last']
             .map(p => nodes.filter(n => (n.priority || 'normal') === p).map(n => n.idx))
             .filter(g => g.length);
         if (groups.length === 0) return [];

@@ -133,6 +133,7 @@
             if (raw) {
                 const s = JSON.parse(raw);
                 s.settings = Object.assign({}, defaultSettings, s.settings);
+                Object.values(s.routes || {}).forEach(r => (r.stops || []).forEach(st => { if (st.urgent === true) st.urgent = 'alta'; }));
                 if (s.routes && s.routes[s.current]) return s;
             }
         } catch (e) { /* armazenamento indisponível */ }
@@ -566,7 +567,8 @@
         const urgentFirst = state.settings.urgentMode === 'first';
         const nodes = todo.map((s, i) => ({
             idx: i + 1,
-            priority: s.priority !== 'normal' ? s.priority : (s.urgent && urgentFirst ? 'first' : 'normal'),
+            priority: s.priority !== 'normal' ? s.priority
+                : (urgentFirst && s.urgent === 'alta' ? 'first' : urgentFirst && s.urgent === 'media' ? 'second' : 'normal'),
         }));
         const endIdx = end ? matrix.length - 1 : null;
         const order = RouteSolver.solveWithPriorities(matrix, 0, nodes, endIdx, {
@@ -716,7 +718,7 @@
 
         r.stops.forEach((s, i) => {
             if (s.lat == null) return;
-            const cls = [s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.warn ? 'warn' : '', s.urgent ? 'urgent' : ''].join(' ');
+            const cls = [s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.warn ? 'warn' : '', s.urgent === 'alta' ? 'urgent' : s.urgent === 'media' ? 'media' : ''].join(' ');
             const mk = L.marker([s.lat, s.lng], {
                 icon: icon(cls, r.optimized ? i + 1 : '•'),
                 draggable: true,
@@ -778,7 +780,7 @@
             note: p.note || '',
             phone: p.phone || '',
             priority: p.priority || 'normal',
-            urgent: !!p.urgent,
+            urgent: p.urgent === true ? 'alta' : (p.urgent || false),
             status: 'pending',
             doneAt: null,
             result: '',
@@ -918,7 +920,7 @@
             m: r.endMode,
             e: r.end && [r.end.addr, +r.end.lat.toFixed(6), +r.end.lng.toFixed(6)],
             o: r.optimized ? 1 : 0,
-            p: r.stops.map(s => [s.addr, s.lat != null ? +s.lat.toFixed(6) : null, s.lng != null ? +s.lng.toFixed(6) : null, s.note || '', s.phone || '', s.priority === 'normal' ? '' : s.priority, s.urgent ? 1 : 0]),
+            p: r.stops.map(s => [s.addr, s.lat != null ? +s.lat.toFixed(6) : null, s.lng != null ? +s.lng.toFixed(6) : null, s.note || '', s.phone || '', s.priority === 'normal' ? '' : s.priority, s.urgent === 'alta' ? 1 : s.urgent === 'media' ? 2 : 0]),
         };
         const bytes = new TextEncoder().encode(JSON.stringify(data));
         let bin = '';
@@ -941,7 +943,7 @@
             if (d.e) r.end = { addr: d.e[0], lat: d.e[1], lng: d.e[2] };
             r.stops = (d.p || []).map(p => ({
                 id: uid(), addr: p[0], lat: p[1], lng: p[2], note: p[3] || '', phone: p[4] || '',
-                priority: p[5] || 'normal', urgent: !!p[6], status: 'pending', doneAt: null, result: '', photos: [], warn: p[1] == null ? 'notfound' : false,
+                priority: p[5] || 'normal', urgent: p[6] === 1 ? 'alta' : p[6] === 2 ? 'media' : false, status: 'pending', doneAt: null, result: '', photos: [], warn: p[1] == null ? 'notfound' : false,
             }));
             r.optimized = !!d.o;
             return r;
@@ -955,7 +957,7 @@
         const lines = [`*${r.name}* — ${r.stops.length} paradas`];
         if (r.start) lines.push(`Saída: ${r.start.addr}`);
         r.stops.forEach((s, i) => {
-            lines.push(`\n*${i + 1}.* ${s.urgent ? '🔴 ' : ''}${s.addr}${s.note ? ' — ' + s.note : ''}`);
+            lines.push(`\n*${i + 1}.* ${s.urgent === 'alta' ? '🔴 ' : s.urgent === 'media' ? '🟡 ' : ''}${s.addr}${s.note ? ' — ' + s.note : ''}`);
             if (s.lat != null) lines.push(placeUrl(s));
         });
         const end = endPoint(r);
@@ -1040,32 +1042,39 @@
                 addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng,
                 parts: street ? parts : null,
                 note: noteParts.join(' — '), phone: get(row, col.phone),
-                urgent: !!(rows.red && rows.red.has(bi + (hasHeader ? 1 : 0))),
+                urgent: (rows.cores && rows.cores.get(bi + (hasHeader ? 1 : 0))) || false,
             };
         }).filter(it => it.addr);
         items.hasCity = col.city >= 0;
         return items;
     }
 
-    // Linhas da planilha pintadas de vermelho (fundo ou letra) = prioridade.
-    // Retorna os índices das linhas (0 = primeira linha da tabela).
-    function redRows(buf, wb, ws) {
-        const red = new Set();
+    // Linhas da planilha pintadas (fundo ou letra): vermelho = urgente, amarelo/laranja = média.
+    // Retorna Map(índice da linha (0 = primeira da tabela) -> 'alta' | 'media').
+    function coloredRows(buf, wb, ws) {
+        const cores = new Map();
         try {
-            const isRed = (rgb) => {
-                if (!rgb || rgb.length < 6) return false;
+            const nivel = (rgb) => {
+                if (!rgb || rgb.length < 6) return null;
                 const h = rgb.slice(-6);
                 const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
-                return r >= 150 && g <= 110 && b <= 110;
+                if (r >= 150 && g <= 110 && b <= 110) return 'alta';            // vermelho
+                if (r >= 200 && g >= 140 && b <= 120) return 'media';           // amarelo / laranja
+                return null;
             };
+            const isRed = (rgb) => nivel(rgb) !== null;
             const range = XLSX.utils.decode_range(ws['!ref']);
-            const mark = (excelRow) => red.add(excelRow - 1 - range.s.r);
+            const mark = (excelRow, rgb) => {
+                const n = nivel(rgb), i = excelRow - 1 - range.s.r;
+                // vermelho ganha de amarelo na mesma linha
+                if (n && (!cores.has(i) || n === 'alta')) cores.set(i, n);
+            };
 
             // Fundo vermelho: o leitor já informa na célula.
             for (const addr in ws) {
                 if (addr[0] === '!') continue;
                 const c = ws[addr];
-                if (c && c.s && c.s.fgColor && isRed(c.s.fgColor.rgb)) mark(XLSX.utils.decode_cell(addr).r + 1);
+                if (c && c.s && c.s.fgColor && isRed(c.s.fgColor.rgb)) mark(XLSX.utils.decode_cell(addr).r + 1, c.s.fgColor.rgb);
             }
 
             // Letra vermelha: lê o estilo de cada célula direto do arquivo.
@@ -1087,19 +1096,19 @@
                     while ((m = re.exec(xml))) {
                         const xf = st.CellXf[+m[2]];
                         const font = xf && st.Fonts[xf.fontId];
-                        if (font && font.color && isRed(font.color.rgb)) mark(+m[1]);
+                        if (font && font.color && isRed(font.color.rgb)) mark(+m[1], font.color.rgb);
                     }
                 }
             }
         } catch (e) { console.warn('cores da planilha', e); }
-        return red;
+        return cores;
     }
 
     // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
     async function askCity(items, title) {
-        const urgentN = items.filter(i => i.urgent).length;
+        const altaN = items.filter(i => i.urgent === 'alta').length, mediaN = items.filter(i => i.urgent === 'media').length;
         const cidadesIbge = await ibge.list();
-        const html = `<p>Encontrei <b>${items.length}</b> endereço(s)${urgentN ? `, sendo <b>${urgentN}</b> com prioridade (linha vermelha)` : ''}. Primeiros:</p>
+        const html = `<p>Encontrei <b>${items.length}</b> endereço(s)${altaN ? `, <b>${altaN}</b> urgente(s) 🔴 (linha vermelha)` : ''}${mediaN ? `, <b>${mediaN}</b> média(s) 🟡 (linha amarela)` : ''}. Primeiros:</p>
             <ul>${items.slice(0, 5).map(i => `<li>${esc(i.addr)}</li>`).join('')}</ul>
             ${items.hasCity ? '' : `<label>Cidade destes endereços</label>
             <select id="imp-city-sel">
@@ -1153,7 +1162,7 @@
                 const wb = XLSX.read(buf, { type: 'array', cellStyles: true });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true });
-                rows.red = redRows(buf, wb, ws);
+                rows.cores = coloredRows(buf, wb, ws);
                 busy(false);
             }
             const items = rowsToItems(rows);
@@ -1259,7 +1268,12 @@
             <label>Endereço</label><input type="text" id="sd-addr" value="${esc(s.addr)}">
             <label>Observação (o que fazer no local)</label><input type="text" id="sd-note" value="${esc(s.note)}">
             <label>Telefone do contato</label><input type="tel" id="sd-phone" value="${esc(s.phone)}">
-            <div class="check-row"><input type="checkbox" id="sd-urgent" ${s.urgent ? 'checked' : ''}><label for="sd-urgent" style="margin:0">🔴 Prioridade (urgente)</label></div>
+            <label>Prioridade</label>
+            <select id="sd-urgent">
+                <option value="">Normal</option>
+                <option value="media">🟡 Média (linha amarela)</option>
+                <option value="alta">🔴 Urgente (linha vermelha)</option>
+            </select>
             <label>Posição na rota</label>
             <select id="sd-prio">
                 <option value="normal">Normal (onde for melhor)</option>
@@ -1276,8 +1290,8 @@
                     const addr = $('#sd-addr').value.trim();
                     s.note = $('#sd-note').value.trim();
                     s.phone = $('#sd-phone').value.trim();
-                    const urgent = $('#sd-urgent').checked;
-                    if (urgent !== !!s.urgent) { s.urgent = urgent; if (state.settings.urgentMode === 'first') invalidate(); }
+                    const urgent = $('#sd-urgent').value || false;
+                    if (urgent !== (s.urgent || false)) { s.urgent = urgent; if (state.settings.urgentMode === 'first') invalidate(); }
                     const prio = $('#sd-prio').value;
                     if (prio !== s.priority) { s.priority = prio; invalidate(); }
                     if (addr && (addr !== s.addr || s.lat == null)) {
@@ -1294,6 +1308,7 @@
             },
         ]);
         $('#sd-prio').value = s.priority;
+        $('#sd-urgent').value = s.urgent === true ? 'alta' : (s.urgent || '');
         if (s.photos?.length) showPhotos(s.photos, $('#sd-photos'));
     }
 
@@ -1411,10 +1426,10 @@
                 <option value="waze">Waze</option>
                 <option value="apple">Apple Mapas</option>
             </select>
-            <label>Paradas com prioridade (linha vermelha na planilha)</label>
+            <label>Paradas com prioridade (vermelho = urgente, amarelo = média)</label>
             <select id="st-urgent">
                 <option value="mark">Só destacar — rota em sequência, sem voltas</option>
-                <option value="first">Fazer antes das outras (pode aumentar o caminho)</option>
+                <option value="first">Urgentes primeiro, depois médias, depois o resto (pode aumentar o caminho)</option>
             </select>
             <label>Buscar endereços somente no país</label>
             <select id="st-country">
@@ -1550,7 +1565,7 @@
             const i = r.stops.indexOf(next);
             nc.classList.remove('hidden');
             nc.innerHTML = `
-                <h3>Próxima parada · ${i + 1} de ${r.stops.length}${next.urgent ? ' · 🔴 PRIORIDADE' : ''}</h3>
+                <h3>Próxima parada · ${i + 1} de ${r.stops.length}${next.urgent === 'alta' ? ' · 🔴 URGENTE' : next.urgent === 'media' ? ' · 🟡 MÉDIA' : ''}</h3>
                 <div class="addr">${esc(next.addr)}</div>
                 ${next.note ? `<div class="note">📝 ${esc(next.note)}</div>` : ''}
                 <div class="btns">
@@ -1566,12 +1581,13 @@
         $('#empty').classList.toggle('hidden', r.stops.length > 0);
         $('#stops').innerHTML = r.stops.map((s, i) => {
             const leg = r.legs ? r.legs[i + (r.start ? 0 : -1)] : null;
-            const cls = [s.status === 'done' ? 'done' : '', s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.urgent ? 'urgent' : ''].join(' ');
+            const cls = [s.status === 'done' ? 'done' : '', s.status === 'failed' ? 'failed' : '', next === s ? 'next' : '', s.urgent === 'alta' ? 'urgent' : s.urgent === 'media' ? 'media' : ''].join(' ');
             const flags = [
                 s.warn === 'notfound' ? '<span class="flag flag-warn">não encontrado</span>' : '',
                 s.warn === 'approx' ? '<span class="flag flag-warn">posição aproximada</span>' : '',
                 s.warn === 'far' ? '<span class="flag flag-failed">🚨 muito longe das outras</span>' : '',
-                s.urgent ? '<span class="flag flag-urgent">🔴 prioridade</span>' : '',
+                s.urgent === 'alta' ? '<span class="flag flag-urgent">🔴 urgente</span>' : '',
+                s.urgent === 'media' ? '<span class="flag flag-media">🟡 média</span>' : '',
                 s.priority === 'first' ? '<span class="flag flag-first">fazer primeiro</span>' : '',
                 s.priority === 'last' ? '<span class="flag flag-last">deixar pro final</span>' : '',
                 s.status === 'done' ? `<span class="flag flag-done">feito ${fmtClock(new Date(s.doneAt))}</span>` : '',
