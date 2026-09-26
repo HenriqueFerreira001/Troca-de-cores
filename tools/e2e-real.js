@@ -22,6 +22,15 @@ async function main() {
         const page = await ctx.newPage();
         const erros = [];
         page.on('pageerror', e => erros.push(e.message));
+        page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') erros.push(m.text().slice(0, 200)); });
+        page.on('requestfailed', r => erros.push('falhou: ' + r.url().slice(0, 120) + ' ' + (r.failure() || {}).errorText));
+        const t0 = Date.now();
+        const tick = setInterval(async () => {
+            try {
+                const st = await page.evaluate(() => ({ n: document.querySelectorAll('#stops li').length, busy: document.querySelector('#busy-text').textContent, hidden: document.querySelector('#busy').classList.contains('hidden'), toast: document.querySelector('#toast').textContent }));
+                console.error(`[${f} ${Math.round((Date.now() - t0) / 1000)}s] paradas=${st.n} busy=${st.hidden ? '-' : st.busy} toast=${st.toast}`);
+            } catch (e) { /* página ocupada */ }
+        }, 10000);
         await page.goto(url);
         await page.waitForSelector('#map .leaflet-pane', { state: 'attached' });
 
@@ -35,8 +44,8 @@ async function main() {
         await page.setInputFiles('#file-import', xlsx);
         await page.waitForSelector('#imp-city-sel');
         await page.click('#dialog-actions button.primary');
-        await page.waitForFunction((n) => document.querySelectorAll('#stops li').length === n, cfg.paradas.length, { timeout: 180000 });
-        await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 180000 });
+        await page.waitForFunction((n) => document.querySelectorAll('#stops li').length === n, cfg.paradas.length, { timeout: 600000 });
+        await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 600000 });
         const avisos = (await page.textContent('#warnings')).trim();
 
         await page.click('#btn-optimize');
@@ -70,9 +79,11 @@ async function main() {
         for (let i = 0; i < zeo.length; i++) out.push(`| ${i + 1} | ${nome(ordem[i])}${ordem[i] === zeo[i] ? ' ✅' : ''} | ${nome(zeo[i])} |`);
         out.push('');
         await page.screenshot({ path: `/tmp/app-${f.replace('.json', '')}.png` });
+        clearInterval(tick);
         await ctx.close();
     }
     await browser.close();
     console.log(out.join('\n'));
 }
 main().catch(e => { console.error('Erro:', e); process.exit(1); });
+process.on('exit', () => {});
