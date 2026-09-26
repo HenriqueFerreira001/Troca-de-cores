@@ -119,6 +119,7 @@
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
         urgentMode: 'mark',       // mark: só destaca (rota sem voltas) | first: faz antes das outras
+        nearestFirst: true,       // a parada 1 é a mais perto da saída; a rota vai se afastando
         defaultCity: 'Embu das Artes, SP',
         // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
         base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
@@ -571,9 +572,21 @@
                 : (urgentFirst && s.urgent === 'alta' ? 'first' : urgentFirst && s.urgent === 'media' ? 'second' : 'normal'),
         }));
         const endIdx = end ? matrix.length - 1 : null;
-        const order = RouteSolver.solveWithPriorities(matrix, 0, nodes, endIdx, {
-            timeLimitMs: Math.min(4000, 500 + todo.length * 30),
-        });
+        let order;
+        const semGrupos = nodes.every(n => n.priority === 'normal');
+        if (state.settings.nearestFirst && origin && semGrupos && todo.length > 1) {
+            // Parada 1 = a mais perto da saída (pelas ruas). Daí em diante, a melhor ordem.
+            let first = 1;
+            for (let i = 2; i <= todo.length; i++) if (matrix[0][i] < matrix[0][first]) first = i;
+            const resto = nodes.filter(n => n.idx !== first);
+            order = [first].concat(RouteSolver.solveWithPriorities(matrix, first, resto, endIdx, {
+                timeLimitMs: Math.min(4000, 500 + todo.length * 30),
+            }));
+        } else {
+            order = RouteSolver.solveWithPriorities(matrix, 0, nodes, endIdx, {
+                timeLimitMs: Math.min(4000, 500 + todo.length * 30),
+            });
+        }
 
         const doneOrdered = done.sort((a, b) => (a.doneAt || 0) - (b.doneAt || 0));
         const before = r.stops.map(s => s.id).join();
@@ -1217,6 +1230,7 @@
         $('#dialog-body').innerHTML = bodyHTML;
         const acts = $('#dialog-actions');
         acts.innerHTML = '';
+        const my = ++dialogSeq;
         return new Promise(resolve => {
             buttons.forEach(b => {
                 const el = document.createElement('button');
@@ -1233,10 +1247,13 @@
                 };
                 acts.appendChild(el);
             });
-            dlg.onclose = () => resolve(undefined);
-            dlg.showModal();
+            // Esc / clique fora: só vale se esta ainda for a janela atual.
+            dlg.oncancel = () => { if (my === dialogSeq) resolve(undefined); };
+            dlg.onclose = () => { if (my === dialogSeq) resolve(undefined); };
+            if (!dlg.open) dlg.showModal();
         });
     }
+    let dialogSeq = 0;
     function confirmDialog(title, html, okLabel = 'OK', okCls = 'primary') {
         return openDialog(title, html, [{ label: 'Cancelar', value: false }, { label: okLabel, value: true, cls: okCls }]);
     }
@@ -1399,7 +1416,6 @@
             if (t.dataset.del) {
                 if (Object.keys(state.routes).length === 1) return toast('Precisa ter pelo menos uma rota.');
                 const r = state.routes[t.dataset.del];
-                $('#dialog').close();
                 if (await confirmDialog('Excluir rota', `<p>Excluir "${esc(r.name)}"?</p>`, 'Excluir', 'bad')) {
                     r.stops.forEach(s => (s.photos || []).forEach(pid => photoDB.del(pid).catch(() => { })));
                     delete state.routes[r.id];
@@ -1431,6 +1447,7 @@
                 <option value="mark">Só destacar — rota em sequência, sem voltas</option>
                 <option value="first">Urgentes primeiro, depois médias, depois o resto (pode aumentar o caminho)</option>
             </select>
+            <div class="check-row"><input type="checkbox" id="st-nearest" ${s.nearestFirst ? 'checked' : ''}><label for="st-nearest" style="margin:0">Parada 1 é sempre a mais perto da saída (a rota vai se afastando)</label></div>
             <label>Buscar endereços somente no país</label>
             <select id="st-country">
                 <option value="br">Brasil</option>
@@ -1450,6 +1467,8 @@
                     s.country = $('#st-country').value;
                     const um = $('#st-urgent').value;
                     if (um !== s.urgentMode) { s.urgentMode = um; invalidate(); }
+                    const nf = $('#st-nearest').checked;
+                    if (nf !== !!s.nearestFirst) { s.nearestFirst = nf; invalidate(); }
                     save(); render();
                 },
             },

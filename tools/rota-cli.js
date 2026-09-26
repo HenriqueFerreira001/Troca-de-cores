@@ -173,7 +173,15 @@ async function main() {
     if (!start) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(r => [1e12, ...r]));
     const nodes = ok.map((s, i) => ({ idx: i + 1, priority: 'normal' }));
     const endIdx = end ? matrix.length - 1 : null;
-    const order = Solver.solveWithPriorities(matrix, 0, nodes, endIdx, { timeLimitMs: 8000 });
+    let order;
+    if (start && cfg.maisPertoPrimeiro !== false && nodes.length > 1) {
+        // Igual ao app: parada 1 = a mais perto da saída; depois a melhor ordem.
+        let first = 1;
+        for (let i = 2; i <= nodes.length; i++) if (matrix[0][i] < matrix[0][first]) first = i;
+        order = [first].concat(Solver.solveWithPriorities(matrix, first, nodes.filter(n => n.idx !== first), endIdx, { timeLimitMs: 8000 }));
+    } else {
+        order = Solver.solveWithPriorities(matrix, 0, nodes, endIdx, { timeLimitMs: 8000 });
+    }
 
     // Totais pela matriz real (índices sem o ponto virtual).
     const real = (i) => i - off;
