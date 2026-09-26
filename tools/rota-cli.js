@@ -159,7 +159,7 @@ async function main() {
     }
     const ok = stops.filter(s => s.geo);
 
-    const fimModo = cfg.fim || (start ? 'perto' : 'livre');
+    const fimModo = cfg.fim || 'livre';
     const perto = fimModo === 'perto' && !!start;
     let end = null;
     if (fimModo === 'voltar' && start) end = start;
@@ -170,7 +170,7 @@ async function main() {
 
     const points = [...(start ? [start] : []), ...ok.map(s => s.geo), ...(end ? [end] : [])];
     const m = await osrmTable(points);
-    let matrix = cfg.otimizarPor === 'tempo' ? m.dur : m.dist;
+    let matrix = cfg.otimizarPor === 'distancia' ? m.dist : m.dur;
     // Sem início: ponto virtual com custo zero até qualquer parada (igual ao app).
     const off = start ? 0 : 1;
     if (!start) matrix = [new Array(points.length + 1).fill(0)].concat(matrix.map(r => [1e12, ...r]));
@@ -209,7 +209,7 @@ async function main() {
     }
 
     log(`Início: ${start ? start.label : 'livre (começa pela parada mais conveniente)'} · Fim: ${fimModo}`);
-    log(`Otimizado por: ${cfg.otimizarPor === 'tempo' ? 'tempo' : 'distância'} · ${ok.length} paradas`);
+    log(`Otimizado por: ${cfg.otimizarPor === 'distancia' ? 'distância' : 'tempo'} · ${ok.length} paradas`);
     log(`**Total dirigindo: ${km(totD)} · ${min(totT)}**`);
     log();
     log('| # | OS | Endereço | Trecho | Localização encontrada |');
@@ -249,4 +249,5 @@ async function main() {
     console.log(out.join('\n'));
 }
 
-main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+if (require.main === module) main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+module.exports = { geocode, osrmTable, ibgeCity, nominatim, expand, km, min };

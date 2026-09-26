@@ -2,7 +2,7 @@
   "nome": "Embu das Artes - 20 OS (comparar com Zeo)",
   "cidade": "Embu das Artes",
   "uf": "SP",
-  "otimizarPor": "distancia",
+  "otimizarPor": "tempo",
   "paradas": [
     {
       "os": "2630022976",

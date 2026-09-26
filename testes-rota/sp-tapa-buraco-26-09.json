@@ -2,7 +2,7 @@
   "nome": "Tapa buraco 26/09 - 20 OS saindo da usina (comparar com Zeo)",
   "cidade": "São Paulo",
   "uf": "SP",
-  "otimizarPor": "distancia",
+  "otimizarPor": "tempo",
   "inicio": {
     "nome": "PRF Embu Usina de Asfalto",
     "rua": "ESTRADA VELHA DA PEDREIRA",
@@ -10,7 +10,7 @@
     "bairro": "PARQUE SAO LEONARDO",
     "cidade": "Embu das Artes"
   },
-  "fim": "perto",
+  "fim": "livre",
   "compararNome": "Zeo",
   "compararCom": [
     "2637237535",

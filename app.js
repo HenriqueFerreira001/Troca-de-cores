@@ -101,7 +101,7 @@
             name: name || 'Rota ' + new Date().toLocaleDateString('pt-BR'),
             createdAt: Date.now(),
             start: base ? { ...base } : null,   // { addr, lat, lng } — começa pela base fixa, se houver
-            endMode: 'near',      // near (termina perto da saída) | free (última parada) | return | custom
+            endMode: 'free',      // free (termina na última parada) | near (perto da saída) | return | custom
             end: null,
             stops: [],            // { id, addr, lat, lng, note, phone, priority, status, doneAt, result, photos, warn }
             optimized: false,
@@ -114,7 +114,7 @@
 
     const defaultSettings = {
         country: 'br',
-        optimizeBy: 'distance',   // distance (menos km, sem volta à toa) | duration
+        optimizeBy: 'duration',   // duration (menor tempo, igual ao Zeo) | distance
         serviceMin: 15,
         startTime: '08:00',
         navApp: 'google',         // google | waze | apple
@@ -135,6 +135,13 @@
                 const s = JSON.parse(raw);
                 s.settings = Object.assign({}, defaultSettings, s.settings);
                 Object.values(s.routes || {}).forEach(r => (r.stops || []).forEach(st => { if (st.urgent === true) st.urgent = 'alta'; }));
+                if (!s.settings.migrouTempo) {
+                    // Comparação com o Zeo: ele otimiza por tempo e termina na última parada.
+                    s.settings.migrouTempo = true;
+                    s.settings.migrouNear = true;
+                    s.settings.optimizeBy = 'duration';
+                    Object.values(s.routes || {}).forEach(r => { if (r.endMode === 'near') { r.endMode = 'free'; r.optimized = false; } });
+                }
                 if (!s.settings.migrouNear) {
                     s.settings.migrouNear = true;
                     s.settings.nearestFirst = false;
