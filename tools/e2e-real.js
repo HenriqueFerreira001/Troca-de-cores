@@ -135,6 +135,15 @@ async function main() {
         lista.forEach((x, i) => out.push(`| ${i + 1} | ${x.addr} | ${x.note} | ${x.meta} | ${x.flags} |`));
         out.push('');
         await page.screenshot({ path: `/tmp/app-${f.replace('.xlsx', '')}.png` });
+        // Exporta a "Lista para a equipe" e joga o arquivo no log (base64) para conferir fora daqui.
+        try {
+            await page.click('#btn-export');
+            await page.waitForSelector('#dialog[open]');
+            const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#dialog-actions button.primary')]);
+            const destino = `/tmp/app-${f.replace('.xlsx', '')}-equipe.xlsx`;
+            await dl.saveAs(destino);
+            console.error(`EXPORT ${f} ${fs.readFileSync(destino).toString('base64')} FIM`);
+        } catch (e) { out.push(`- Exportar falhou: ${e.message}`); }
         await ctx.close();
     }
     await browser.close();
