@@ -776,7 +776,7 @@
 
         if (r.start) {
             const sm = L.marker([r.start.lat, r.start.lng], { icon: pill('start', 'SAÍDA'), title: 'Saída', draggable: true, zIndexOffset: 1000 }).addTo(layer);
-            sm.bindPopup(`<b>Saída:</b> ${esc(r.start.addr)}<br><small>Arraste para ajustar o ponto exato. Depois toque em ★ para fixar como base.</small>`);
+            sm.bindPopup(`<b>Saída:</b> ${esc(r.start.addr)}<br><small>Arraste para ajustar o ponto exato.</small>`);
             sm.on('dragend', () => {
                 const ll = sm.getLatLng();
                 r.start = { ...r.start, lat: ll.lat, lng: ll.lng };
@@ -1197,12 +1197,13 @@
             if (!addr && parts.cep) addr = parts.cep;
             const lat = col.lat >= 0 ? num(row[col.lat]) : null;
             const lng = col.lng >= 0 ? num(row[col.lng]) : null;
-            const noteParts = [get(row, col.os) ? 'OS ' + get(row, col.os) : '', get(row, col.name), get(row, col.comp), get(row, col.note)].filter(Boolean);
+            const noteParts = [get(row, col.os) ? 'OS ' + get(row, col.os) : '', get(row, col.name), get(row, col.comp), get(row, col.note), get(row, col.prio)].filter(Boolean);
             return {
                 addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng,
                 parts: street ? parts : null,
                 note: noteParts.join(' — '), phone: get(row, col.phone),
-                urgent: (rows.cores && rows.cores.get(bi + (hasHeader ? 1 : 0))) || prioridadeTexto(get(row, col.prio)) || false,
+                // Só a cor da linha marca urgente/média (texto como "VENCIDO" vai para a observação).
+                urgent: (rows.cores && rows.cores.get(bi + (hasHeader ? 1 : 0))) || false,
             };
         }).filter(it => it.addr);
         items.hasCity = col.city >= 0;
@@ -1262,15 +1263,6 @@
             }
         } catch (e) { console.warn('cores da planilha', e); }
         return cores;
-    }
-
-    // Coluna de prioridade escrita: "VENCIDO"/"URGENTE" = urgente, "VENCE HOJE"/"MÉDIA" = média.
-    function prioridadeTexto(t) {
-        const n = norm(t);
-        if (!n) return false;
-        if (/vencid|urgent|alta|atrasad|critic/.test(n)) return 'alta';
-        if (/vence hoje|hoje|media|atencao/.test(n)) return 'media';
-        return false;
     }
 
     // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
@@ -1709,11 +1701,10 @@
         const r = route();
         $('#route-name').value = r.name;
         $('#start-label').textContent = r.start ? (isBase(r.start) ? '★ ' : '') + r.start.addr : 'Sem saída — ao otimizar, usa a base';
-        $('#btn-start-base').classList.toggle('hidden', !r.start || isBase(r.start));
-        $('#btn-start-base').textContent = '☆ Fixar como base';
-        $('#btn-start-base').title = 'Toda rota nova vai começar deste ponto';
-        $('#btn-start-usebase').classList.toggle('hidden', !state.settings.base || isBase(r.start));
-        $('#btn-start-usebase').textContent = '★ Usar base';
+        // A equipe sempre sai da Usina: um botão só, que aparece quando a saída é outra.
+        $('#btn-start-base').classList.add('hidden');
+        $('#btn-start-usebase').classList.toggle('hidden', !!r.start && r.start.addr === defaultSettings.base.addr);
+        $('#btn-start-usebase').textContent = '🏭 Usina';
         const optNear = $('#end-mode').querySelector('option[value="near"]');
         optNear.textContent = r.start ? 'Terminar perto da saída (equipe volta pra base)' : 'Terminar perto da saída (defina a saída)';
         $('#end-mode').value = r.endMode;
@@ -1867,10 +1858,11 @@
             save(); render();
         };
         $('#btn-start-usebase').onclick = () => {
-            const b = state.settings.base;
-            if (!b) return;
+            // Usa a Usina (mantendo o ajuste fino do ponto, se já foi arrastado) e volta ela a ser a base.
+            const b = state.settings.base && state.settings.base.addr === defaultSettings.base.addr ? state.settings.base : { ...defaultSettings.base };
+            state.settings.base = { ...b };
             route().start = { ...b }; invalidate(); save(); render(); fitMap();
-            toast('Saída: ' + b.addr);
+            toast('Saída: Usina. Toque em Otimizar rota.');
         };
         $('#btn-end-edit').onclick = () => setSearchTarget('end');
         $('#search-target-cancel').onclick = () => setSearchTarget(null);
