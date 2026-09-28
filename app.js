@@ -1082,19 +1082,23 @@
 
     // "RUA CACTOS, 367 - JD PINHEIRINHO - EMBU" -> "Rua Cactos, 367 - Jardim Pinheirinho, Embu"
     function enderecoLimpo(addr) {
-        let t = String(addr || '').replace(/^[📍★\s]+/u, '').trim();
-        if (t === t.toUpperCase()) {
-            const acento = { INDIA: 'ÍNDIA', JOSE: 'JOSÉ', ANTONIO: 'ANTÔNIO', GONCALVES: 'GONÇALVES', ROSARIO: 'ROSÁRIO', INDEPENDENCIA: 'INDEPENDÊNCIA', VITORIA: 'VITÓRIA', GLORIA: 'GLÓRIA', FLORIDA: 'FLÓRIDA', PASCOA: 'PÁSCOA', AGUA: 'ÁGUA', AGUAS: 'ÁGUAS', MARCIO: 'MÁRCIO', SERGIO: 'SÉRGIO', FATIMA: 'FÁTIMA', LUCIA: 'LÚCIA', CECILIA: 'CECÍLIA', EMILIA: 'EMÍLIA', JARDIM: 'JARDIM', CHACARAS: 'CHÁCARAS', CHACARA: 'CHÁCARA', PRACA: 'PRAÇA', PEDREIRA: 'PEDREIRA', EUGENIA: 'EUGÊNIA', BRANDAO: 'BRANDÃO', LOURENCO: 'LOURENÇO', CAPITAO: 'CAPITÃO', CRISTOVAO: 'CRISTÓVÃO' };
-            t = t.replace(/\bS\.?\s+(?=[A-Z]{3})/g, 'SÃO ')
-                .replace(/\b[A-Z]+\b/g, w => acento[w] || w.replace(/CAO$/, 'ÇÃO').replace(/AO$/, 'ÃO'));
-            t = geo.expand(t).toLowerCase()
+        const acento = { INDIA: 'ÍNDIA', JOSE: 'JOSÉ', ANTONIO: 'ANTÔNIO', GONCALVES: 'GONÇALVES', ROSARIO: 'ROSÁRIO', INDEPENDENCIA: 'INDEPENDÊNCIA', VITORIA: 'VITÓRIA', GLORIA: 'GLÓRIA', FLORIDA: 'FLÓRIDA', PASCOA: 'PÁSCOA', AGUA: 'ÁGUA', AGUAS: 'ÁGUAS', MARCIO: 'MÁRCIO', SERGIO: 'SÉRGIO', FATIMA: 'FÁTIMA', LUCIA: 'LÚCIA', CECILIA: 'CECÍLIA', EMILIA: 'EMÍLIA', CHACARAS: 'CHÁCARAS', CHACARA: 'CHÁCARA', PRACA: 'PRAÇA', EUGENIA: 'EUGÊNIA', LOURENCO: 'LOURENÇO', CRISTOVAO: 'CRISTÓVÃO', MENDONCA: 'MENDONÇA', ESPERANTINOPOLIS: 'ESPERANTINÓPOLIS', SINHA: 'SINHÁ', NHOCUNE: 'NHOCUNÉ', RE: 'RÉ', GODOI: 'GODÓI' };
+        // Cada pedaço (rua, bairro, cidade) só é ajeitado se veio todo em maiúsculas.
+        const ajeita = (t) => {
+            if (!/[A-Z]/.test(t) || t !== t.toUpperCase()) return t;
+            t = (' ' + t + ' ')
+                .replace(/\sS\.?\s+(?=[A-Z]{3})/g, ' SÃO ')
+                .replace(/\sV\.?\s+(?=[A-Z]{2})/g, ' VILA ')
+                .replace(/\sCID\.?\s+/g, ' CIDADE ')
+                .replace(/\b[A-Z]+\b/g, w => acento[w] || w.replace(/CAO$/, 'ÇÃO').replace(/AO$/, 'ÃO'))
+                .trim();
+            return geo.expand(t).toLowerCase()
                 .replace(/(^|[\s(\/-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
                 .replace(/\s(Da|De|Do|Das|Dos|E)\s/g, m => m.toLowerCase())
                 .replace(/\b(Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xi|Xii)\b/g, m => m.toUpperCase());
-        }
-        const partes = t.split(/\s+-\s+/);
-        if (partes.length >= 3) t = partes[0] + ' - ' + partes.slice(1).join(', ');
-        return t;
+        };
+        const partes = String(addr || '').replace(/^[📍★\s]+/u, '').trim().split(/\s+-\s+/).map(ajeita);
+        return partes.length >= 3 ? partes[0] + ' - ' + partes.slice(1).join(', ') : partes.join(' - ');
     }
 
     async function exportEquipe() {
