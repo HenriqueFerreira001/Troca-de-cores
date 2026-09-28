@@ -1,0 +1,166 @@
+{
+  "nome": "MAXXPAV 28/09 - 21 OS saindo da usina (comparar com Zeo)",
+  "cidade": "Embu das Artes",
+  "uf": "SP",
+  "otimizarPor": "tempo",
+  "inicio": {
+    "nome": "PRF Embu Usina de Asfalto",
+    "rua": "ESTRADA VELHA DA PEDREIRA",
+    "numero": "",
+    "bairro": "PARQUE SAO LEONARDO",
+    "cidade": "Embu das Artes"
+  },
+  "fim": "livre",
+  "compararNome": "Zeo",
+  "compararCom": [
+    "2638528704",
+    "2638489041",
+    "2638553492",
+    "26105374037",
+    "2637140893",
+    "26103973657",
+    "2638695532",
+    "2630330265",
+    "2637234505",
+    "2634731169",
+    "2637058570",
+    "2638678684",
+    "2638186749",
+    "2637568786",
+    "2637772298",
+    "2636628546",
+    "2638189662",
+    "2638088627",
+    "26105088842",
+    "2637553857",
+    "2637569115"
+  ],
+  "paradas": [
+    {
+      "os": "26103973657",
+      "rua": "RUA CUBATAO",
+      "numero": "582",
+      "bairro": "CENTRO"
+    },
+    {
+      "os": "2630330265",
+      "rua": "RUA ANTONIO MORY",
+      "numero": "311",
+      "bairro": "JD DE LOURDES"
+    },
+    {
+      "os": "2638189662",
+      "rua": "AVENIDA JOAO PAULO II",
+      "numero": "2152",
+      "bairro": "JD INDEPENDENCIA"
+    },
+    {
+      "os": "2636628546",
+      "rua": "RUA URSO",
+      "numero": "198",
+      "bairro": "JD INDEPENDENCIA"
+    },
+    {
+      "os": "2634731169",
+      "rua": "RUA PROFESSOR MARIO OSASSA",
+      "numero": "968",
+      "bairro": "JD MAGALI"
+    },
+    {
+      "os": "2637140893",
+      "rua": "RUA INDIA",
+      "numero": "95",
+      "bairro": "JD MIMAS"
+    },
+    {
+      "os": "26105374037",
+      "rua": "RUA ALEMANHA",
+      "numero": "117",
+      "bairro": "JD MIMAS"
+    },
+    {
+      "os": "2637553857",
+      "rua": "RUA CARAZINHO",
+      "numero": "5",
+      "bairro": "JD NOVO CAMPO LIMPO"
+    },
+    {
+      "os": "2638489041",
+      "rua": "RUA CACTOS",
+      "numero": "367",
+      "bairro": "JD PINHEIRINHO"
+    },
+    {
+      "os": "2638528704",
+      "rua": "RUA PARREIRAS",
+      "numero": "165",
+      "bairro": "JD PINHEIRINHO"
+    },
+    {
+      "os": "2638088627",
+      "rua": "ESTRADA SAO CRISTOVAO",
+      "numero": "220",
+      "bairro": "JD S MARCOS"
+    },
+    {
+      "os": "26105088842",
+      "rua": "RUA SAO CARLOS",
+      "numero": "56",
+      "bairro": "JD S MARCOS"
+    },
+    {
+      "os": "2637772298",
+      "rua": "AVENIDA GUILHERME GONCALVES DO ROSARIO",
+      "numero": "39",
+      "bairro": "JD STA ROSA"
+    },
+    {
+      "os": "2638186749",
+      "rua": "AVENIDA JOAO PAULO II",
+      "numero": "806",
+      "bairro": "JD STA TEREZA"
+    },
+    {
+      "os": "2637568786",
+      "rua": "RUA ASTOR",
+      "numero": "24",
+      "bairro": "JD STA TEREZA"
+    },
+    {
+      "os": "2637569115",
+      "rua": "RUA FLAMENGO",
+      "numero": "100",
+      "bairro": "JD STO EDUARDO"
+    },
+    {
+      "os": "2638553492",
+      "rua": "RUA EIFEL",
+      "numero": "101",
+      "bairro": "PQ ESPLANADA"
+    },
+    {
+      "os": "2638695532",
+      "rua": "RUA SAO MANOEL",
+      "numero": "37",
+      "bairro": "PQ JANE"
+    },
+    {
+      "os": "2637058570",
+      "rua": "AVENIDA CAPIVARI",
+      "numero": "171",
+      "bairro": "PQ LUIZA"
+    },
+    {
+      "os": "2637234505",
+      "rua": "AVENIDA ROTARY",
+      "numero": "190",
+      "bairro": "PQ PIRAJUSSARA"
+    },
+    {
+      "os": "2638678684",
+      "rua": "ESTRADA KIZAEMON TAKEUTI",
+      "numero": "160",
+      "bairro": "PQ PIRAJUSSARA"
+    }
+  ]
+}
