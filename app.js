@@ -128,8 +128,8 @@
         // Todas as bases (de onde as equipes saem). Cada uma vira um botão na Saída.
         // Fábio: CEP 08771-001 (Parque Residencial Itapeti), posição das casas desse CEP no cadastro do IBGE.
         bases: [
-            { nome: 'Usina', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
-            { nome: 'Fábio', addr: 'Fábio — Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes', lat: -23.4530, lng: -46.2680 },
+            { nome: 'Mauro (Usina)', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
+            { nome: 'Fábio', addr: 'Fábio — Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes', lat: -23.4530, lng: -46.2680, ordem: 'perto' },
         ],
         // Envio direto para o sistema da empresa (docs/INTEGRACAO-SISTEMA.md). Vazio = desligado.
         sistemaUrl: '',
@@ -151,12 +151,19 @@
                 s.settings.bases = JSON.parse(JSON.stringify(Array.isArray(s.settings.bases) ? s.settings.bases : []));
                 if (!s.settings.bases.length) {
                     const usina = s.settings.base.addr === defaultSettings.base.addr ? s.settings.base : defaultSettings.base;
-                    s.settings.bases = [{ nome: 'Usina', ...usina }];
+                    s.settings.bases = [{ nome: 'Mauro (Usina)', ...usina }];
                 }
                 // Base do Fábio já cadastrada para todo mundo (uma vez; se apagarem, não volta).
                 if (!s.settings.migrouFabio) {
                     s.settings.migrouFabio = true;
                     if (!s.settings.bases.some(b => /f[aá]bio/i.test(b.nome))) s.settings.bases.push({ ...defaultSettings.bases[1] });
+                }
+                // A Usina (Estrada Velha da Pedreira) é a saída da equipe do Mauro.
+                s.settings.bases.forEach(b => { if (b.nome === 'Usina' && b.addr === defaultSettings.base.addr) b.nome = 'Mauro (Usina)'; });
+                // A equipe do Fábio começa pela parada mais perto da base dele.
+                if (!s.settings.migrouFabioOrdem) {
+                    s.settings.migrouFabioOrdem = true;
+                    s.settings.bases.forEach(b => { if (/f[aá]bio/i.test(b.nome) && !b.ordem) b.ordem = 'perto'; });
                 }
                 if (!s.settings.migrouTempo) {
                     // Comparação com o Zeo: ele otimiza por tempo e termina na última parada.
@@ -660,7 +667,12 @@
             // vai até a ponta mais longe e vem voltando, terminando o dia perto de casa.
             // Serviço perto da base: começa pela ponta mais perto. (Mesmo padrão do Zeo.)
             const maisPerto = Math.min(...ordemFinal.map(i => matrix[0][i]));
-            const longe = state.settings.optimizeBy === 'distance' ? maisPerto > 15000 : maisPerto > 25 * 60;
+            // Cada base pode ter a sua regra (⚙ Configurações → Bases): 'perto' = começa pela
+            // parada mais perto da base; 'longe' = começa pela mais longe e termina perto da base.
+            const baseDaSaida = r.start && (state.settings.bases || []).find(b => b.addr === r.start.addr);
+            const regra = (baseDaSaida && baseDaSaida.ordem) || 'auto';
+            const longe = regra === 'longe' ? true : regra === 'perto' ? false
+                : (state.settings.optimizeBy === 'distance' ? maisPerto > 15000 : maisPerto > 25 * 60);
             const comecaPertoA = matrix[0][a] <= matrix[0][z];
             if (livre && !longe && !comecaPertoA) ordemFinal = [...ordemFinal].reverse();
             if ((perto || (livre && longe)) && matrix[a][0] < matrix[z][0]) ordemFinal = [...ordemFinal].reverse();
@@ -1916,9 +1928,21 @@
             },
         ]);
         const listaBases = () => {
-            $('#st-bases').innerHTML = s.bases.map((b, i) => `<div class="base-item"><div class="grow"><b>🏭 ${esc(b.nome)}</b>${s.base && s.base.addr === b.addr ? ' <small class="muted">(padrão)</small>' : ''}<br><small class="muted">${esc(b.addr)}</small></div>${s.bases.length > 1 ? `<button type="button" class="x-btn" data-del="${i}" title="Apagar base">✕</button>` : ''}</div>`).join('');
+            $('#st-bases').innerHTML = s.bases.map((b, i) => `<div class="base-item"><div class="grow"><b>🏭 ${esc(b.nome)}</b>${s.base && s.base.addr === b.addr ? ' <small class="muted">(padrão)</small>' : ''}<br><small class="muted">${esc(b.addr)}</small>
+                <select class="base-ordem" data-ordem="${i}" aria-label="Ordem da rota saindo desta base">
+                    <option value="auto" ${!b.ordem || b.ordem === 'auto' ? 'selected' : ''}>Ordem: automática</option>
+                    <option value="perto" ${b.ordem === 'perto' ? 'selected' : ''}>Ordem: começa pela parada mais perto da base</option>
+                    <option value="longe" ${b.ordem === 'longe' ? 'selected' : ''}>Ordem: começa pela mais longe e termina perto da base</option>
+                </select></div>${s.bases.length > 1 ? `<button type="button" class="x-btn" data-del="${i}" title="Apagar base">✕</button>` : ''}</div>`).join('');
         };
         listaBases();
+        $('#st-bases').onchange = (e) => {
+            const sel = e.target.closest('[data-ordem]');
+            if (!sel) return;
+            s.bases[+sel.dataset.ordem].ordem = sel.value;
+            invalidate(); save(); render();
+            toast('Regra salva. Toque em Otimizar rota.');
+        };
         $('#st-bases').onclick = (e) => {
             const bt = e.target.closest('[data-del]');
             if (!bt) return;

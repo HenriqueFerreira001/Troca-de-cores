@@ -269,6 +269,7 @@ dialog h2 { margin: 0 0 12px; font-size: 19px; }
 .base-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .base-item .grow { flex: 1; min-width: 0; }
 .base-item .x-btn { border: 1px solid var(--line); background: #fff; color: #c62828; border-radius: 8px; width: 34px; height: 34px; font-weight: 700; }
+.base-ordem { margin-top: 4px; width: 100%; font-size: 13px; }
 .add-base { margin-top: 8px; }
 .add-base summary { cursor: pointer; font-weight: 600; color: var(--primary); padding: 6px 0; }
 .add-base input { margin-top: 6px; }
