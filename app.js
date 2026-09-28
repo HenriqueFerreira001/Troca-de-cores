@@ -235,14 +235,8 @@
     const geo = {
         // "-23.55, -46.63" ou link do Google Maps
         parseCoords(text) {
-            const t = text.trim();
-            let m = t.match(/^(-?\d{1,2}\.\d+)\s*[,; ]\s*(-?\d{1,3}\.\d+)$/);
-            if (!m) m = t.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
-            if (!m) m = t.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/);
-            if (!m) return null;
-            const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
-            if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-            return { lat, lng };
+            // Coordenadas soltas ou link do Google Maps com o ponto.
+            return coordsDoTexto(text);
         },
 
         bias() {
@@ -283,7 +277,7 @@
         expand(text) {
             const map = [
                 [/\bAV\.?(?=\s)/gi, 'Avenida'], [/\bR\.(?=\s)/gi, 'Rua'], [/\bAL\.?(?=\s)/gi, 'Alameda'],
-                [/\bTV\.?(?=\s)/gi, 'Travessa'], [/\bPCA\.?(?=\s)|\bPÇA\.?(?=\s)/gi, 'Praça'], [/\bEST\.?(?=\s)/gi, 'Estrada'],
+                [/\bTV\.?(?=\s)/gi, 'Travessa'], [/\bPCA\.?(?=\s)|\bPÇA\.?(?=\s)/gi, 'Praça'], [/\bESTR?\.?(?=\s)/gi, 'Estrada'],
                 [/\bJD\.?(?=\s)/gi, 'Jardim'], [/\bJARD\.?(?=\s)/gi, 'Jardim'], [/\bPQ\.?(?=\s)/gi, 'Parque'], [/\bVL\.?(?=\s)/gi, 'Vila'],
                 [/\bCH\.?(?=\s)/gi, 'Chácara'], [/\bCJ\.?(?=\s)/gi, 'Conjunto'], [/\bRES\.?(?=\s)/gi, 'Residencial'],
                 [/\bNSA\.?\s+SRA\.?(?=\s)/gi, 'Nossa Senhora'], [/\bN\.?\s?SRA\.?(?=\s)/gi, 'Nossa Senhora'],
@@ -827,6 +821,8 @@
 
     function setMapAdd(on) {
         mapAddMode = on;
+        $('#map-hint').firstChild.textContent = pendingMapFix ? 'Toque no lugar certo da parada '
+            : searchTarget === 'start' ? 'Toque no mapa no lugar da SAÍDA ' : searchTarget === 'end' ? 'Toque no mapa no lugar do FIM ' : 'Toque no mapa para adicionar a parada ';
         $('#map-hint').classList.toggle('hidden', !on);
         $('#btn-map-add').classList.toggle('active', on);
         if (on) window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2023,7 +2019,9 @@
         $('#route-name').value = r.name;
         $('#start-label').textContent = r.start ? (isBase(r.start) ? '★ ' : '') + r.start.addr : 'Sem saída — ao otimizar, usa a base';
         // Um botão para cada base cadastrada (a que já é a saída não aparece).
-        $('#btn-start-base').classList.add('hidden');
+        const ehBase = !!r.start && (state.settings.bases || []).some(b => b.addr === r.start.addr);
+        $('#btn-start-base').classList.toggle('hidden', !r.start || ehBase);
+        $('#btn-start-base').textContent = '☆ Salvar como base';
         $('#start-bases').innerHTML = (state.settings.bases || []).map((b, i) => (r.start && r.start.addr === b.addr) ? ''
             : `<button type="button" class="small-btn" data-base="${i}" title="Sair de: ${esc(b.addr)}">🏭 ${esc(b.nome)}</button>`).join('');
         const optNear = $('#end-mode').querySelector('option[value="near"]');
@@ -2170,13 +2168,25 @@
             } catch (e) { busy(false); toast(e.message, 4000); }
         };
         $('#btn-start-edit').onclick = () => setSearchTarget('start');
-        $('#btn-start-base').onclick = () => {
+        $('#btn-start-base').onclick = async () => {
             const r = route();
             if (!r.start) return;
-            if (isBase(r.start)) return;
-            state.settings.base = { ...r.start };
-            toast('Saída fixada como base: toda rota nova começa daqui.');
+            const ok = await openDialog('Salvar como base', `
+                <p>${esc(r.start.addr)}</p>
+                <label>Nome da base (vira um botão na Saída)</label>
+                <input type="text" id="nb-nome" placeholder="Ex.: Fábio">
+            `, [
+                { label: 'Cancelar' },
+                { label: 'Salvar', cls: 'primary', value: true, onClick: () => { if (!$('#nb-nome').value.trim()) { toast('Escreva o nome.'); return false; } window.__nb = $('#nb-nome').value.trim(); } },
+            ]);
+            if (!ok || !window.__nb) return;
+            const nome = window.__nb; delete window.__nb;
+            const addr = r.start.addr.startsWith(nome) ? r.start.addr : `${nome} — ${r.start.addr.replace(/^📍\s*/, '')}`;
+            r.start = { ...r.start, addr };
+            state.settings.bases.push({ nome, addr, lat: r.start.lat, lng: r.start.lng });
+            state.settings.base = { addr, lat: r.start.lat, lng: r.start.lng };
             save(); render();
+            toast(`Base "${nome}" salva. Agora ela é um botão na Saída.`, 5000);
         };
         $('#start-bases').onclick = (e) => {
             const bt = e.target.closest('[data-base]');
@@ -2241,12 +2251,29 @@
                 if (!q) return;
                 hide();
                 busy('Procurando endereço…');
-                const res = await (geo.parseCoords(q) || /^\s*\d{5}-?\d{3}\s*$/.test(q) ? geo.search(q) : locate({ addr: q })).catch(() => null);
+                let res = await (geo.parseCoords(q) || /^\s*\d{5}-?\d{3}\s*$/.test(q) ? geo.search(q) : locate({ addr: q })).catch(() => null);
+                // Plano B: sem o "Km 11" e o CEP, que os mapas gratuitos não entendem.
+                if (!res && /\bkm\s*\d/i.test(q)) res = await locate({ addr: q.replace(/,?\s*km\s*[\d.,]+/i, '').replace(/,?\s*\d{5}-?\d{3}/, '') }).catch(() => null);
+                // Plano C: só o CEP (posição aproximada da rua).
+                const cep = q.match(/\b\d{5}-?\d{3}\b/);
+                if (!res && cep) {
+                    res = await geo.search(cep[0]).catch(() => null);
+                    if (res) res = { ...res, addr: q, precise: false };
+                }
                 busy(false);
-                if (!res) return toast('Endereço não encontrado. Inclua bairro e cidade, ou use "No mapa".', 5000);
+                if (!res) {
+                    if (searchTarget) {
+                        // Definindo saída/fim: deixa marcar direto no mapa.
+                        setMapAdd(true);
+                        return toast('Esse endereço não está nos mapas gratuitos. Toque no mapa no lugar certo (ou cole as coordenadas do Google Maps).', 8000);
+                    }
+                    return toast('Endereço não encontrado. Inclua bairro e cidade, cole as coordenadas do Google Maps ou use "No mapa".', 7000);
+                }
                 input.value = '';
+                // Link/coordenadas: mostra o endereço do ponto em vez do link.
+                if (geo.parseCoords(q)) res = { ...res, addr: (await geo.reverse(res.lat, res.lng).catch(() => '')) || `${res.lat.toFixed(5)}, ${res.lng.toFixed(5)}` };
                 applyPlace(res);
-                if (res.precise === false) toast('Posição aproximada: confira no mapa.', 4000);
+                if (res.precise === false) toast('Posição aproximada: arraste o pino para o lugar exato.', 6000);
             }
         });
         sug.addEventListener('mousedown', (e) => {
