@@ -26,7 +26,7 @@ const Enderecos = require('../enderecos.js');
 function ibgeCity(nome) {
     try {
         const lista = JSON.parse(fs.readFileSync(path.join(__dirname, '../dados/cidades.json'), 'utf8'));
-        const c = lista.find(x => Enderecos.nucleo(x.cidade) === Enderecos.nucleo(nome));
+        const c = lista.find(x => Enderecos.mesmaCidade(nome, x.cidade));
         if (!c) return null;
         const dir = path.join(__dirname, `../dados/cnefe/${c.cod}`);
         const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));

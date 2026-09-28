@@ -389,8 +389,7 @@
         // Índice da cidade ("Embu das Artes, SP"), baixado uma vez e guardado.
         async forCity(name) {
             if (!name || !window.Enderecos) return null;
-            const alvo = Enderecos.nucleo(String(name).split(/[,/]|\s-\s/)[0]);
-            const c = (await this.list()).find(x => Enderecos.nucleo(x.cidade) === alvo);
+            const c = (await this.list()).find(x => Enderecos.mesmaCidade(name, x.cidade));
             if (!c) return null;
             if (!this.loaded[c.cod]) {
                 // meta.json é pequeno; cada pedaço (letra) só é baixado quando uma rua precisa dele.
@@ -1115,7 +1114,8 @@
             cep: find('cep', 'postal', 'zip'),
             lat: find('latitude', 'lat'),
             lng: find('longitude', 'lng', 'lon'),
-            note: find('observacao', 'obs', 'nota', 'descricao', 'servico', 'note'),
+            note: find('observacao', 'obs', 'nota', 'descricao', 'servico', 'tss', 'tipo de servico', 'note'),
+            prio: find('prioridade', 'urgencia', 'situacao', 'status'),
             phone: find('telefone', 'celular', 'fone', 'phone', 'whatsapp'),
             name: find('nome', 'cliente', 'name'),
         };
@@ -1139,7 +1139,7 @@
                 addr: addr || (lat != null ? `${lat}, ${lng}` : ''), lat, lng,
                 parts: street ? parts : null,
                 note: noteParts.join(' — '), phone: get(row, col.phone),
-                urgent: (rows.cores && rows.cores.get(bi + (hasHeader ? 1 : 0))) || false,
+                urgent: (rows.cores && rows.cores.get(bi + (hasHeader ? 1 : 0))) || prioridadeTexto(get(row, col.prio)) || false,
             };
         }).filter(it => it.addr);
         items.hasCity = col.city >= 0;
@@ -1199,6 +1199,15 @@
             }
         } catch (e) { console.warn('cores da planilha', e); }
         return cores;
+    }
+
+    // Coluna de prioridade escrita: "VENCIDO"/"URGENTE" = urgente, "VENCE HOJE"/"MÉDIA" = média.
+    function prioridadeTexto(t) {
+        const n = norm(t);
+        if (!n) return false;
+        if (/vencid|urgent|alta|atrasad|critic/.test(n)) return 'alta';
+        if (/vence hoje|hoje|media|atencao/.test(n)) return 'media';
+        return false;
     }
 
     // Planilha sem coluna de cidade: pergunta a cidade uma vez para todas as paradas.
