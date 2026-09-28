@@ -259,6 +259,12 @@ dialog h2 { margin: 0 0 12px; font-size: 19px; }
 .etapa-bts label.small-btn { flex: 1; text-align: center; cursor: pointer; padding: 10px 6px; }
 .medida { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .medida input { flex: 1; min-width: 0; }
+.medida .x-btn, .foto .x-btn {
+    border: 1px solid var(--line); background: #fff; color: #c62828; border-radius: 8px;
+    width: 34px; height: 34px; flex: none; font-weight: 700; cursor: pointer;
+}
+.foto { position: relative; display: inline-block; }
+.foto .x-btn { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border-radius: 50%; padding: 0; }
 .area { font-weight: 700; margin: 6px 0; }
 .resumo-servico { white-space: pre-wrap; font: inherit; background: #f4f6f9; padding: 10px; border-radius: 8px; }
 .link-list a { display: block; padding: 8px 0; }
