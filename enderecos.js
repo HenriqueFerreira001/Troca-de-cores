@@ -134,6 +134,22 @@
         return null;
     }
 
+    function parecidaNoBairro(city, pedaco, street, bairro) {
+        const k = nucleo(street), b = nucleo(bairro);
+        let best = null, bs = 0;
+        for (const n of pedaco._nucleos) {
+            if (Math.abs(n.length - k.length) > 3) continue;
+            const s = similar(k, n);
+            if (s < 0.7 || s <= bs) continue;
+            const passa = pedaco._porNucleo.get(n).some(nome => pedaco.ruas[nome].some(e => {
+                const bn = city._bairrosNorm[e[3]] || '';
+                return bn === b || similar(bn, b) >= 0.8;
+            }));
+            if (passa) { best = n; bs = s; }
+        }
+        return best ? { nomes: pedaco._porNucleo.get(best), score: bs } : null;
+    }
+
     // Procura rua + número (+ bairro): carrega o pedaço necessário e consulta.
     async function find(city, p) {
         const pedaco = await load(city, p.street);
@@ -149,7 +165,10 @@
      */
     function lookup(city, p, pedaco) {
         if (!pedaco) return null;
-        const c = candidatas(pedaco, p.street);
+        let c = candidatas(pedaco, p.street);
+        // Grafia um pouco diferente (CACTOS × CACTUS, EIFEL × EIFFEL): aceita um nome
+        // parecido desde que a rua passe pelo bairro informado.
+        if (!c && p.bairro) c = parecidaNoBairro(city, pedaco, p.street, p.bairro);
         if (!c) return null;
         const t = tipo(p.street);
         const numero = parseInt(String(p.number || '').replace(/\D/g, ''), 10);
@@ -279,7 +298,18 @@
         return { street: m[1].trim(), number: m[2], bairro: resto[0] || '' };
     }
 
-    const api = { norm, nucleo, similar, prepare, load, find, lookup, parse, pedacoDe };
+    // Nome de cidade como vem nas planilhas ("EMBU", "S PAULO", "SAO PAULO - SP")
+    // para o nome do cadastro ("Embu das Artes", "São Paulo").
+    function mesmaCidade(dado, cadastro) {
+        const a = nucleo(String(dado || '').split(/[,/]|\s-\s/)[0]), b = nucleo(cadastro);
+        if (!a) return false;
+        if (a === b) return true;
+        // "EMBU" = "EMBU ARTES" (Embu das Artes); não confunde com "EMBU GUACU"
+        if (b.startsWith(a + ' ') && !(a === 'EMBU' && /GUACU/.test(b))) return true;
+        return similar(a, b) >= 0.9;
+    }
+
+    const api = { norm, nucleo, similar, prepare, load, find, lookup, parse, pedacoDe, mesmaCidade };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.Enderecos = api;
 })(typeof window !== 'undefined' ? window : globalThis);

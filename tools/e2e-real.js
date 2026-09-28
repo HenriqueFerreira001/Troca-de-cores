@@ -96,6 +96,47 @@ async function main() {
         clearInterval(tick);
         await ctx.close();
     }
+    // Planilhas reais (testes-rota/*.xlsx): importa o arquivo como está e mostra a ordem.
+    for (const f of fs.readdirSync('testes-rota').filter(x => x.endsWith('.xlsx'))) {
+        const ctx = await browser.newContext({ viewport: { width: 1300, height: 900 } });
+        const page = await ctx.newPage();
+        const erros = [];
+        page.on('pageerror', e => erros.push(e.message));
+        await page.goto(url);
+        await page.waitForSelector('#map .leaflet-pane', { state: 'attached' });
+        await page.setInputFiles('#file-import', path.join('testes-rota', f));
+        await page.waitForSelector('#dialog[open]');
+        const dialogo = (await page.textContent('#dialog-body')).replace(/\s+/g, ' ').slice(0, 200);
+        await page.click('#dialog-actions button.primary');
+        await page.waitForFunction(() => /localizados/.test(document.querySelector('#toast').textContent), null, { timeout: 600000 });
+        await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 600000 });
+        const avisosImport = (await page.textContent('#warnings')).trim();
+        await page.click('#btn-optimize');
+        await page.waitForFunction(() => document.querySelector('#stops li .num') && document.querySelector('#stops li .num').textContent === '1', null, { timeout: 180000 });
+        await page.waitForSelector('#busy.hidden', { state: 'attached', timeout: 180000 });
+        await page.waitForTimeout(1500);
+        const saida = await page.textContent('#start-label');
+        const resumo = (await page.textContent('#summary')).replace(/\s+/g, ' ').trim();
+        const lista = await page.$$eval('#stops li', ls => ls.map(li => ({
+            addr: li.querySelector('.addr').textContent.trim(),
+            note: ((li.querySelector('.note') || {}).textContent || '').replace('📝', '').trim(),
+            meta: ((li.querySelector('.meta') || {}).textContent || '').trim(),
+            flags: Array.from(li.querySelectorAll('.flag')).map(x => x.textContent.trim()).join(' '),
+        })));
+        out.push(`### Planilha ${f}`);
+        out.push(`- Janela de importação: ${dialogo}`);
+        out.push(`- Saída na tela: ${saida}`);
+        out.push(`- Resumo: ${resumo}`);
+        if (avisosImport) out.push(`- Avisos depois de importar: ${avisosImport}`);
+        if (erros.length) out.push(`- Erros na página: ${erros.join(' | ')}`);
+        out.push('');
+        out.push('| # | Endereço | Obs | Trecho | Marcas |');
+        out.push('|---|---|---|---|---|');
+        lista.forEach((x, i) => out.push(`| ${i + 1} | ${x.addr} | ${x.note} | ${x.meta} | ${x.flags} |`));
+        out.push('');
+        await page.screenshot({ path: `/tmp/app-${f.replace('.xlsx', '')}.png` });
+        await ctx.close();
+    }
     await browser.close();
     console.log(out.join('\n'));
 }
