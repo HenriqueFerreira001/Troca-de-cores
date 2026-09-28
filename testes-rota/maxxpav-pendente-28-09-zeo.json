@@ -1,0 +1,159 @@
+{
+  "nome": "PENDENTE 28/09 - 20 OS SP leste saindo da usina (comparar com Zeo)",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "otimizarPor": "tempo",
+  "inicio": {
+    "nome": "PRF Embu Usina de Asfalto",
+    "rua": "ESTRADA VELHA DA PEDREIRA",
+    "numero": "",
+    "bairro": "PARQUE SAO LEONARDO",
+    "cidade": "Embu das Artes"
+  },
+  "fim": "livre",
+  "compararNome": "Zeo",
+  "compararCom": [
+    "2637764572",
+    "2638330416",
+    "2637664904",
+    "2637664579",
+    "2638194204",
+    "2638197778",
+    "2638192271",
+    "2638191497",
+    "2638193464",
+    "2638194847",
+    "2638187333",
+    "2638194419",
+    "2638187704",
+    "2637865131",
+    "2638193295",
+    "2638196985",
+    "2638196365",
+    "2638190455",
+    "2638190187",
+    "2638189879"
+  ],
+  "paradas": [
+    {
+      "os": "2637664579",
+      "rua": "RUA IBITIPOCA",
+      "numero": "39",
+      "bairro": "GUAIANAZES"
+    },
+    {
+      "os": "2637664904",
+      "rua": "RUA QUINTA DA TORRE",
+      "numero": "103",
+      "bairro": "GUAIANAZES"
+    },
+    {
+      "os": "2637764572",
+      "rua": "RUA CACHOEIRA DO CAMPO GRANDE",
+      "numero": "133",
+      "bairro": "BARRO BRANCO 2"
+    },
+    {
+      "os": "2638187704",
+      "rua": "RUA DOUTOR XAVIER DE OLIVEIRA",
+      "numero": "854",
+      "bairro": "JD MARINA"
+    },
+    {
+      "os": "2638189879",
+      "rua": "RUA RENATO",
+      "numero": "775",
+      "bairro": "V RE"
+    },
+    {
+      "os": "2638194847",
+      "rua": "RUA OLEIROS",
+      "numero": "34",
+      "bairro": "V CARMOSINA"
+    },
+    {
+      "os": "2638196365",
+      "rua": "AVENIDA WALDEMAR CARLOS PEREIRA",
+      "numero": "999",
+      "bairro": "V MATILDE"
+    },
+    {
+      "os": "2638187333",
+      "rua": "AVENIDA DOUTOR FRANCISCO MUNHOZ FILHO",
+      "numero": "2111",
+      "bairro": "ITAQUERA"
+    },
+    {
+      "os": "2638191497",
+      "rua": "RUA FLOR DA VERDADE",
+      "numero": "300",
+      "bairro": "V VERDE"
+    },
+    {
+      "os": "2638192271",
+      "rua": "RUA ERVA DE OVELHA",
+      "numero": "880",
+      "bairro": "V REIS"
+    },
+    {
+      "os": "2638193295",
+      "rua": "RUA BELCHIOR DE GODOI",
+      "numero": "23",
+      "bairro": "JD JUREMA"
+    },
+    {
+      "os": "2638196985",
+      "rua": "RUA AUGUSTO DE MENDONCA",
+      "numero": "538",
+      "bairro": "JD JUREMA"
+    },
+    {
+      "os": "2638330416",
+      "rua": "RUA LOURENCO BENACCI",
+      "numero": "60",
+      "bairro": "CID TIRADENTES"
+    },
+    {
+      "os": "2638197778",
+      "rua": "AVENIDA NORDESTINA",
+      "numero": "5298",
+      "bairro": "V SINHA"
+    },
+    {
+      "os": "2638190455",
+      "rua": "AVENIDA PROFESSOR XAVIER DE LIMA",
+      "numero": "248",
+      "bairro": "JD SAMARA"
+    },
+    {
+      "os": "2638190187",
+      "rua": "AVENIDA PROFESSOR XAVIER DE LIMA",
+      "numero": "282",
+      "bairro": "JD SAMARA"
+    },
+    {
+      "os": "2638193464",
+      "rua": "RUA LAGOA DA BARRA",
+      "numero": "20",
+      "bairro": "ITAQUERA"
+    },
+    {
+      "os": "2638194204",
+      "rua": "AVENIDA NORDESTINA",
+      "numero": "5296",
+      "bairro": "V SINHA"
+    },
+    {
+      "os": "2638194419",
+      "rua": "RUA ESPERANTINOPOLIS",
+      "numero": "64",
+      "bairro": "V NHOCUNE"
+    },
+    {
+      "os": "2637865131",
+      "rua": "AVENIDA BELARMINO FERREIRA",
+      "numero": "24",
+      "bairro": "V ARISI"
+    }
+  ]
+}
