@@ -138,6 +138,7 @@ input, select, textarea { font: inherit; }
 .primary:hover { background: var(--primary-dark); }
 .primary:disabled { background: #9db6e8; cursor: default; }
 .secondary { background: #fff; border: 1px solid var(--line); color: var(--text); }
+.secondary.wide { flex: 1; font-size: 16px; }
 .secondary.active { background: #eef3fd; border-color: var(--primary); color: var(--primary-dark); }
 .danger { color: var(--bad); }
 .footer-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
