@@ -125,6 +125,10 @@
         defaultCity: 'Embu das Artes, SP',
         // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
         base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
+        // Envio direto para o sistema da empresa (docs/INTEGRACAO-SISTEMA.md). Vazio = desligado.
+        sistemaUrl: '',
+        sistemaChave: '',
+        equipe: '',
     };
 
     let state = null;
@@ -1454,12 +1458,13 @@
                 <option value="first">Fazer primeiro</option>
                 <option value="last">Deixar para o final</option>
             </select>
-            ${s.status !== 'pending' ? `<label>Situação</label><p>${s.status === 'done' ? '✅ Feito' : '❌ Não feito'} em ${new Date(s.doneAt).toLocaleString('pt-BR')}${s.result ? ' — ' + esc(s.result) : ''}</p>${s.medidas?.length ? `<p>📐 ${s.medidas.map(x => `${fmtNum(x.c)} x ${fmtNum(x.l)}`).join(' + ')} = <b>${fmtNum(areaDe(s.medidas))} m²</b></p>` : ''}<div class="photos" id="sd-photos"></div>` : ''}
+            ${s.status !== 'pending' ? `<label>Situação</label><p>${s.status === 'done' ? '✅ Feito' : '❌ Não feito'} em ${new Date(s.doneAt).toLocaleString('pt-BR')}${s.result ? ' — ' + esc(s.result) : ''}</p>${s.medidas?.length ? `<p>📐 ${s.medidas.map(x => `${fmtNum(x.c)} x ${fmtNum(x.l)}`).join(' + ')} = <b>${fmtNum(areaDe(s.medidas))} m²</b></p>` : ''}${state.settings.sistemaUrl ? `<p>${s.sistema?.ok ? '⬆ Enviado ao sistema em ' + new Date(s.sistema.em).toLocaleString('pt-BR') : '⚠ Ainda não foi para o sistema' + (s.sistema?.erro ? ' (' + esc(s.sistema.erro) + ')' : '')}</p>` : ''}<div class="photos" id="sd-photos"></div>` : ''}
         `, [
             { label: 'Excluir', cls: 'bad', onClick: async () => { if (await confirmDialog('Excluir parada', `<p>${esc(s.addr)}</p>`, 'Excluir', 'bad')) removeStop(id); } },
             { label: 'Marcar no mapa', onClick: () => { pendingMapFix = id; setMapAdd(true); toast('Toque no lugar certo no mapa'); } },
             ...(s.status !== 'pending' ? [{ label: 'Reabrir', onClick: () => { s.status = 'pending'; s.doneAt = null; save(); render(); } }] : []),
             ...(s.status !== 'pending' ? [{ label: '📤 Enviar', onClick: async () => { await enviarServico(s); return false; } }] : []),
+            ...(s.status !== 'pending' && state.settings.sistemaUrl && !s.sistema?.ok ? [{ label: '⬆ Sistema', onClick: async () => { busy('Enviando ao sistema…'); const v = await enviarSistema(s, r); busy(false); toast(v ? '⬆ Enviado ao sistema.' : 'Não foi: ' + (s.sistema?.erro || ''), 5000); } }] : []),
             {
                 label: 'Salvar', cls: 'primary', onClick: async () => {
                     const addr = $('#sd-addr').value.trim();
@@ -1599,6 +1604,7 @@
                     const nx = nextStop(r);
                     if (nx && map) map.panTo([nx.lat, nx.lng]);
                     setTimeout(() => enviarDialog(s.id, !nx), 50);
+                    if (state.settings.sistemaUrl) enviarSistema(s, r).then(v => toast(v ? '⬆ Enviado ao sistema.' : '⚠ Não foi para o sistema agora; o app tenta de novo depois.', 4000));
                 },
             },
         ]);
@@ -1611,15 +1617,25 @@
         function addMedida() {
             const d = document.createElement('div');
             d.className = 'medida';
-            d.innerHTML = '<input inputmode="decimal" placeholder="Comprimento"><span>×</span><input inputmode="decimal" placeholder="Largura"><span>m</span>';
+            d.innerHTML = '<input inputmode="decimal" placeholder="Comprimento"><span>×</span><input inputmode="decimal" placeholder="Largura"><span>m</span><button type="button" class="x-btn" title="Apagar esta medida" aria-label="Apagar esta medida">✕</button>';
             $('#fd-medidas').appendChild(d);
             d.oninput = mostraArea;
+            d.querySelector('.x-btn').onclick = () => {
+                d.remove();
+                if (!document.querySelector('#fd-medidas .medida')) addMedida();
+                mostraArea();
+            };
         }
         function mostraArea() {
             const a = areaDe(lerMedidas());
             $('#fd-area').textContent = a ? `Área: ${fmtNum(a)} m²` : '';
         }
         if (ok) { addMedida(); $('#fd-mais').onclick = addMedida; }
+        function contaEtapa(n) {
+            const q = fotos.filter(f => f.etapa === etapas[n]).length;
+            $('#fd-q' + n).textContent = q ? `✔ ${q} foto${q > 1 ? 's' : ''}` : '';
+            $('#fd-p' + n).closest('.etapa').classList.toggle('ok', q > 0);
+        }
 
         document.querySelectorAll('#dialog-body input[type=file]').forEach(inp => {
             inp.onchange = async () => {
@@ -1628,14 +1644,22 @@
                 for (const f of inp.files) {
                     const quando = camera ? Date.now() : (f.lastModified || Date.now());
                     const blob = await fotoCarimbada(f, [os ? 'OS ' + os : '', endereco, etapa], quando);
-                    fotos.push({ blob, etapa });
+                    const foto = { blob, etapa };
+                    fotos.push(foto);
+                    const box = document.createElement('span');
+                    box.className = 'foto';
+                    box.innerHTML = '<button type="button" class="x-btn" title="Apagar esta foto" aria-label="Apagar esta foto">✕</button>';
                     const img = document.createElement('img');
                     img.src = URL.createObjectURL(blob);
-                    $('#fd-p' + n).appendChild(img);
+                    box.prepend(img);
+                    box.querySelector('.x-btn').onclick = () => {
+                        fotos.splice(fotos.indexOf(foto), 1);
+                        box.remove();
+                        contaEtapa(n);
+                    };
+                    $('#fd-p' + n).appendChild(box);
                 }
-                const q = fotos.filter(f => f.etapa === etapa).length;
-                $('#fd-q' + n).textContent = q ? `✔ ${q} foto${q > 1 ? 's' : ''}` : '';
-                inp.closest('.etapa').classList.toggle('ok', q > 0);
+                contaEtapa(n);
                 inp.value = '';
             };
         });
@@ -1681,6 +1705,68 @@
             setTimeout(() => URL.revokeObjectURL(a.href), 4000);
         }, n * 300));
         toast('Texto copiado e fotos baixadas. Cole no WhatsApp junto com as fotos.', 6000);
+    }
+
+    // ---------- Envio direto para o sistema da empresa ----------
+    async function enviarSistema(s, r) {
+        const cfg = state.settings;
+        if (!cfg.sistemaUrl) return false;
+        const fd = new FormData();
+        const m = s.medidas || [];
+        fd.append('os', osDe(s));
+        fd.append('endereco', enderecoLimpo(s.addr));
+        fd.append('endereco_planilha', s.addr || '');
+        fd.append('situacao', s.status === 'done' ? 'feito' : 'nao_feito');
+        fd.append('medidas', JSON.stringify(m.map(x => ({ comprimento: x.c, largura: x.l }))));
+        fd.append('area_m2', m.length ? String(Math.round(areaDe(m) * 100) / 100) : '');
+        fd.append('anotacao', s.result || '');
+        fd.append('observacao', s.note || '');
+        fd.append('concluido_em', s.doneAt ? new Date(s.doneAt).toISOString() : '');
+        fd.append('lat', s.lat != null ? String(s.lat) : '');
+        fd.append('lng', s.lng != null ? String(s.lng) : '');
+        fd.append('equipe', cfg.equipe || '');
+        fd.append('rota', r ? r.name : '');
+        fd.append('id_parada', s.id);
+        const etapas = [];
+        let n = 0;
+        for (const pid of s.photos || []) {
+            const blob = await photoDB.get(pid).catch(() => null);
+            if (!blob) continue;
+            const etapa = (s.photoEtapas || {})[pid] || 'Foto';
+            etapas.push(etapa);
+            fd.append('fotos', new File([blob], `OS${osDe(s) || 'parada'}_${String(++n).padStart(2, '0')}_${norm(etapa).replace(/[^a-z0-9]+/g, '-')}.jpg`, { type: 'image/jpeg' }));
+        }
+        fd.append('etapas', JSON.stringify(etapas));
+        try {
+            const res = await fetch(cfg.sistemaUrl, {
+                method: 'POST', body: fd,
+                headers: cfg.sistemaChave ? { Authorization: 'Bearer ' + cfg.sistemaChave } : {},
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            s.sistema = { ok: true, em: Date.now() };
+        } catch (e) {
+            s.sistema = { ok: false, erro: e.message, em: Date.now() };
+        }
+        save();
+        return s.sistema.ok;
+    }
+
+    // Manda o que ficou para trás (sem internet na hora, sistema fora do ar...).
+    let enviando = false;
+    async function enviarPendentes() {
+        if (enviando || !state.settings.sistemaUrl || !navigator.onLine) return;
+        enviando = true;
+        let ok = 0, falha = 0;
+        try {
+            for (const r of Object.values(state.routes)) {
+                for (const s of r.stops) {
+                    if (s.status === 'pending' || (s.sistema && s.sistema.ok)) continue;
+                    if (await enviarSistema(s, r)) ok++; else falha++;
+                }
+            }
+        } finally { enviando = false; }
+        if (ok) toast(`⬆ ${ok} serviço(s) enviados ao sistema.`);
+        if (falha) render();
     }
 
     function enviarDialog(id, fim) {
@@ -1760,6 +1846,13 @@
                 <option value="first">Urgentes primeiro, depois médias, depois o resto (pode aumentar o caminho)</option>
             </select>
             <div class="check-row"><input type="checkbox" id="st-nearest" ${s.nearestFirst ? 'checked' : ''}><label for="st-nearest" style="margin:0">Parada 1 é sempre a mais perto da saída (a rota vai se afastando)</label></div>
+            <label>Nome da equipe (vai junto com as fotos)</label>
+            <input type="text" id="st-equipe" value="${esc(s.equipe || '')}" placeholder="Ex.: Equipe Mauro">
+            <label>Sistema da empresa — endereço de envio</label>
+            <input type="url" id="st-sis-url" value="${esc(s.sistemaUrl || '')}" placeholder="https://equipe.maxxpav.us/api/rota-certa/servicos">
+            <label>Sistema da empresa — chave de acesso</label>
+            <input type="password" id="st-sis-chave" value="${esc(s.sistemaChave || '')}" placeholder="Chave passada pelo responsável do sistema">
+            <p class="muted">Com o endereço preenchido, cada parada concluída sobe sozinha para o sistema (fotos, medidas e OS). Sem internet, o app guarda e manda depois.</p>
             <label>Buscar endereços somente no país</label>
             <select id="st-country">
                 <option value="br">Brasil</option>
@@ -1777,6 +1870,10 @@
                     s.serviceMin = Math.max(0, parseInt($('#st-service').value, 10) || 0);
                     s.navApp = $('#st-nav').value;
                     s.country = $('#st-country').value;
+                    s.equipe = $('#st-equipe').value.trim();
+                    s.sistemaUrl = $('#st-sis-url').value.trim();
+                    s.sistemaChave = $('#st-sis-chave').value.trim();
+                    if (s.sistemaUrl) setTimeout(enviarPendentes, 500);
                     const um = $('#st-urgent').value;
                     if (um !== s.urgentMode) { s.urgentMode = um; invalidate(); }
                     const nf = $('#st-nearest').checked;
@@ -2155,6 +2252,9 @@
         render();
         fitMap();
         if (!route().stops.length && !route().start) getGPS().then(p => { if (!route().start) map.setView([p.lat, p.lng], 14); }).catch(() => { });
+
+        setTimeout(enviarPendentes, 3000);
+        window.addEventListener('online', () => setTimeout(enviarPendentes, 2000));
 
         if ('serviceWorker' in navigator && location.protocol === 'https:') {
             navigator.serviceWorker.register('sw.js').catch(() => { });
