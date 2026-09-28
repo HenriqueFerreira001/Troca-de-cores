@@ -236,7 +236,10 @@
         let est = estimar(pontos, numero);
         if ((!est || !est.good) && pontos !== melhor.pts) {
             const inteira = estimar(melhor.pts, numero);
-            if (inteira && (!est || inteira.perto < est.perto)) est = inteira;
+            // Se o bairro bateu, não aceita um ponto da rua inteira que caia longe
+            // do bairro (ruas com numeração bagunçada, ex.: Av. Rotary em Embu).
+            const pertoDoBairro = inteira && ancoras.some(a => Math.abs(a.lat - inteira.lat) < 0.012 && Math.abs(a.lng - inteira.lng) < 0.012);
+            if (inteira && (!bairroOk || pertoDoBairro) && (!est || inteira.perto < est.perto)) est = inteira;
         }
         if (!est) return null;
         const { lo, hi } = est;
