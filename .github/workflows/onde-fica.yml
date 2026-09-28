@@ -1,0 +1,28 @@
+# Uso pontual: procura endereços de um CEP / rua no cadastro do IBGE (CNEFE 2022) de uma cidade.
+name: Onde fica
+on:
+  push:
+    paths:
+      - '.github/workflows/onde-fica.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  onde:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Procurar no CNEFE de Mogi das Cruzes
+        run: |
+          COD=3530607
+          BASE="https://ftp.ibge.gov.br/Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/Censo_Demografico_2022/Arquivos_CNEFE/CSV/Municipio"
+          PASTA=$(curl -sSL "$BASE/" | grep -o "href=\"${COD:0:2}_[A-Z]*/\"" | head -1 | sed 's/href="//; s/"//')
+          ARQ=$(curl -sSL "$BASE/$PASTA" | grep -o "href=\"${COD}_[^\"]*\.zip\"" | head -1 | sed 's/href="//; s/"//')
+          curl -sSL -o m.zip "$BASE/$PASTA$ARQ" && unzip -o -q m.zip -d m
+          CSV=$(find m -iname '*.csv' | head -1)
+          head -1 "$CSV"
+          echo "== CEP 08771001"
+          grep -a "08771001" "$CSV" | head -80
+          echo "== Linhas com FURNAS"
+          grep -ai "ITAPETI DAS FURNAS\|ITAPETI.*FURNAS" "$CSV" | head -40
+          echo "== Contagem por logradouro no CEP"
+          grep -a "08771001" "$CSV" | awk -F';' '{print $9" "$10" "$11}' | sort | uniq -c | sort -rn | head -20
