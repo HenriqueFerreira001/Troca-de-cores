@@ -1138,7 +1138,7 @@
         const r = route();
         if (!r.stops.length) return toast('Nada para exportar.');
         const e = etas(r);
-        const head = ['Ordem', 'Endereço', 'Observação', 'Telefone', 'Latitude', 'Longitude', 'Chegada prevista', 'Situação', 'Concluído em', 'Anotação da equipe'];
+        const head = ['Ordem', 'Endereço', 'Observação', 'Telefone', 'Latitude', 'Longitude', 'Chegada prevista', 'Situação', 'Concluído em', 'Anotação da equipe', 'Medidas (m)', 'Área (m²)', 'Fotos'];
         const rows = r.stops.map((s, i) => [
             r.optimized ? i + 1 : '',
             s.addr, s.note, s.phone,
@@ -1148,6 +1148,9 @@
             { pending: 'Pendente', done: 'Feito', failed: 'Não feito' }[s.status],
             s.doneAt ? new Date(s.doneAt).toLocaleString('pt-BR') : '',
             s.result,
+            (s.medidas || []).map(x => `${fmtNum(x.c)} x ${fmtNum(x.l)}`).join(' + '),
+            s.medidas?.length ? fmtNum(areaDe(s.medidas)) : '',
+            (s.photos || []).length || '',
         ]);
         const csv = [head, ...rows].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
         const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -1451,11 +1454,12 @@
                 <option value="first">Fazer primeiro</option>
                 <option value="last">Deixar para o final</option>
             </select>
-            ${s.status !== 'pending' ? `<label>Situação</label><p>${s.status === 'done' ? '✅ Feito' : '❌ Não feito'} em ${new Date(s.doneAt).toLocaleString('pt-BR')}${s.result ? ' — ' + esc(s.result) : ''}</p><div class="photos" id="sd-photos"></div>` : ''}
+            ${s.status !== 'pending' ? `<label>Situação</label><p>${s.status === 'done' ? '✅ Feito' : '❌ Não feito'} em ${new Date(s.doneAt).toLocaleString('pt-BR')}${s.result ? ' — ' + esc(s.result) : ''}</p>${s.medidas?.length ? `<p>📐 ${s.medidas.map(x => `${fmtNum(x.c)} x ${fmtNum(x.l)}`).join(' + ')} = <b>${fmtNum(areaDe(s.medidas))} m²</b></p>` : ''}<div class="photos" id="sd-photos"></div>` : ''}
         `, [
             { label: 'Excluir', cls: 'bad', onClick: async () => { if (await confirmDialog('Excluir parada', `<p>${esc(s.addr)}</p>`, 'Excluir', 'bad')) removeStop(id); } },
             { label: 'Marcar no mapa', onClick: () => { pendingMapFix = id; setMapAdd(true); toast('Toque no lugar certo no mapa'); } },
             ...(s.status !== 'pending' ? [{ label: 'Reabrir', onClick: () => { s.status = 'pending'; s.doneAt = null; save(); render(); } }] : []),
+            ...(s.status !== 'pending' ? [{ label: '📤 Enviar', onClick: async () => { await enviarServico(s); return false; } }] : []),
             {
                 label: 'Salvar', cls: 'primary', onClick: async () => {
                     const addr = $('#sd-addr').value.trim();
@@ -1494,50 +1498,201 @@
         }
     }
 
-    // Concluir parada com foto e anotação (comprovante).
+    // Concluir parada: medidas, fotos por etapa (câmera ou galeria, com carimbo) e envio.
+    const ETAPAS = ['Antes', 'Recorte', 'Limpeza / pintura de ligação', 'Asfalto aplicado', 'Compactação', 'Pronto (depois)', 'Medida com trena'];
+    const osDe = (s) => ((s.note || '').match(/\bOS\s*(\d{6,})/) || [])[1] || '';
+    const fmtNum = (v) => (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
+    const areaDe = (medidas) => (medidas || []).reduce((t, m) => t + (m.c * m.l || 0), 0);
+
+    // Foto reduzida com faixa na parte de baixo: OS, endereço, etapa, data e hora.
+    function fotoCarimbada(file, linhas, quando) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+                const c = document.createElement('canvas');
+                c.width = Math.round(img.width * k);
+                c.height = Math.round(img.height * k);
+                const g = c.getContext('2d');
+                g.drawImage(img, 0, 0, c.width, c.height);
+                const fs = Math.max(14, Math.round(c.width / 50));
+                const texto = [...linhas, new Date(quando).toLocaleString('pt-BR')].filter(Boolean);
+                const h = texto.length * fs * 1.3 + fs * 0.6;
+                g.fillStyle = 'rgba(0,0,0,0.6)';
+                g.fillRect(0, c.height - h, c.width, h);
+                g.fillStyle = '#fff';
+                g.font = `bold ${fs}px sans-serif`;
+                g.textBaseline = 'top';
+                texto.forEach((t, n) => g.fillText(t, fs * 0.5, c.height - h + fs * 0.3 + n * fs * 1.3, c.width - fs));
+                c.toBlob(b => resolve(b || file), 'image/jpeg', 0.82);
+                URL.revokeObjectURL(img.src);
+            };
+            img.onerror = () => resolve(file);
+            img.src = URL.createObjectURL(file);
+        });
+    }
+
     function finishDialog(id, status) {
         const r = route();
         const s = r.stops.find(x => x.id === id);
-        const photos = [];
         const ok = status === 'done';
+        const os = osDe(s);
+        const endereco = enderecoLimpo(s.addr);
+        const fotos = [];                    // { blob, etapa }
+        const etapas = ok ? [...ETAPAS, 'Outras'] : ['Fotos do local'];
+        const linhaEtapa = (e, n) => `
+            <div class="etapa" data-n="${n}">
+                <div class="etapa-top"><span class="etapa-nome">${esc(e)}</span><span class="etapa-qtd" id="fd-q${n}"></span></div>
+                <div class="etapa-bts">
+                    <label class="small-btn">📷 Câmera<input type="file" accept="image/*" capture="environment" hidden data-n="${n}"></label>
+                    <label class="small-btn">🖼 Galeria<input type="file" accept="image/*" multiple hidden data-n="${n}"></label>
+                </div>
+                <div class="photos" id="fd-p${n}"></div>
+            </div>`;
         openDialog(ok ? '✅ Concluir parada' : '❌ Não foi possível fazer', `
-            <p><b>${esc(s.addr)}</b></p>
+            <p><b>${os ? 'OS ' + esc(os) + '<br>' : ''}${esc(endereco)}</b></p>
+            ${ok ? `<label>Medidas do buraco (metros)</label>
+            <div id="fd-medidas"></div>
+            <button type="button" class="small-btn" id="fd-mais">+ outra medida</button>
+            <div class="area" id="fd-area"></div>` : ''}
+            <label>${ok ? 'Fotos de cada etapa' : 'Fotos'}</label>
+            ${etapas.map(linhaEtapa).join('')}
             <label>${ok ? 'Anotação (opcional)' : 'Motivo'}</label>
-            <input type="text" id="fd-note" placeholder="${ok ? 'Ex.: serviço feito, trocado 2 metros de cano' : 'Ex.: local fechado, sem acesso'}">
-            <label>Fotos (comprovante)</label>
-            <input type="file" id="fd-photo" accept="image/*" multiple>
-            <div class="photos" id="fd-photos"></div>
+            <input type="text" id="fd-note" placeholder="${ok ? 'Ex.: 2 buracos, massa fria' : 'Ex.: local fechado, sem acesso'}">
+            <div class="warning hidden" id="fd-aviso"></div>
         `, [
             { label: 'Cancelar' },
             {
                 label: ok ? 'Concluir' : 'Salvar', cls: ok ? 'primary' : 'bad', onClick: async () => {
                     const note = $('#fd-note').value.trim();
                     if (!ok && !note) { toast('Escreva o motivo.'); return false; }
-                    for (const blob of photos) {
-                        const pid = uid();
-                        await photoDB.put(pid, blob).catch(() => toast('Não foi possível salvar a foto.'));
-                        s.photos.push(pid);
+                    const medidas = ok ? lerMedidas() : [];
+                    if (ok) {
+                        const faltam = ETAPAS.filter(e => !fotos.some(f => f.etapa === e));
+                        const avisos = [];
+                        if (!medidas.length) avisos.push('as <b>medidas</b>');
+                        if (faltam.length) avisos.push('fotos de: <b>' + faltam.map(esc).join(', ') + '</b>');
+                        // 1º toque com coisa faltando: avisa na própria janela; 2º toque conclui assim mesmo.
+                        const aviso = avisos.length ? `Ainda falta ${avisos.join(' e ')}. Toque em Concluir de novo para concluir assim mesmo.` : '';
+                        if (aviso && $('#fd-aviso').dataset.msg !== aviso) {
+                            $('#fd-aviso').dataset.msg = aviso;
+                            $('#fd-aviso').innerHTML = '⚠ ' + aviso;
+                            $('#fd-aviso').classList.remove('hidden');
+                            $('#fd-aviso').scrollIntoView({ block: 'nearest' });
+                            return false;
+                        }
                     }
+                    s.photos = s.photos || [];
+                    s.photoEtapas = s.photoEtapas || {};
+                    for (const f of fotos) {
+                        const pid = uid();
+                        await photoDB.put(pid, f.blob).catch(() => toast('Não foi possível salvar a foto.'));
+                        s.photos.push(pid);
+                        s.photoEtapas[pid] = f.etapa;
+                    }
+                    if (ok) s.medidas = medidas;
                     s.status = status;
                     s.result = note;
                     s.doneAt = Date.now();
                     if (!r.startedAt) r.startedAt = Date.now();
                     save(); render();
                     const nx = nextStop(r);
-                    if (!nx) toast('🎉 Rota concluída!', 5000);
-                    else if (map) map.panTo([nx.lat, nx.lng]);
+                    if (nx && map) map.panTo([nx.lat, nx.lng]);
+                    setTimeout(() => enviarDialog(s.id, !nx), 50);
                 },
             },
         ]);
-        $('#fd-photo').onchange = async (e) => {
-            for (const f of e.target.files) {
-                const b = await compressImage(f);
-                photos.push(b);
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(b);
-                $('#fd-photos').appendChild(img);
-            }
-        };
+        function lerMedidas() {
+            return Array.from(document.querySelectorAll('#fd-medidas .medida')).map(m => {
+                const [c, l] = Array.from(m.querySelectorAll('input')).map(i => parseFloat(i.value.replace(',', '.')));
+                return { c, l };
+            }).filter(m => m.c > 0 && m.l > 0);
+        }
+        function addMedida() {
+            const d = document.createElement('div');
+            d.className = 'medida';
+            d.innerHTML = '<input inputmode="decimal" placeholder="Comprimento"><span>×</span><input inputmode="decimal" placeholder="Largura"><span>m</span>';
+            $('#fd-medidas').appendChild(d);
+            d.oninput = mostraArea;
+        }
+        function mostraArea() {
+            const a = areaDe(lerMedidas());
+            $('#fd-area').textContent = a ? `Área: ${fmtNum(a)} m²` : '';
+        }
+        if (ok) { addMedida(); $('#fd-mais').onclick = addMedida; }
+
+        document.querySelectorAll('#dialog-body input[type=file]').forEach(inp => {
+            inp.onchange = async () => {
+                const n = +inp.dataset.n, etapa = etapas[n];
+                const camera = inp.hasAttribute('capture');
+                for (const f of inp.files) {
+                    const quando = camera ? Date.now() : (f.lastModified || Date.now());
+                    const blob = await fotoCarimbada(f, [os ? 'OS ' + os : '', endereco, etapa], quando);
+                    fotos.push({ blob, etapa });
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(blob);
+                    $('#fd-p' + n).appendChild(img);
+                }
+                const q = fotos.filter(f => f.etapa === etapa).length;
+                $('#fd-q' + n).textContent = q ? `✔ ${q} foto${q > 1 ? 's' : ''}` : '';
+                inp.closest('.etapa').classList.toggle('ok', q > 0);
+                inp.value = '';
+            };
+        });
+    }
+
+    // Texto do serviço feito (vai junto com as fotos no WhatsApp).
+    function textoServico(s) {
+        const os = osDe(s);
+        const m = s.medidas || [];
+        const linhas = [
+            s.status === 'done' ? '✅ *Serviço feito*' : '❌ *Não foi possível fazer*',
+            os ? `OS: ${os}` : '',
+            `📍 ${enderecoLimpo(s.addr)}`,
+            m.length ? `📐 ${m.map(x => `${fmtNum(x.c)} x ${fmtNum(x.l)}`).join(' + ')} = ${fmtNum(areaDe(m))} m²` : '',
+            s.photos?.length ? `📷 ${s.photos.length} foto(s)` : '',
+            s.result ? `📝 ${s.result}` : '',
+            s.doneAt ? `🕐 ${new Date(s.doneAt).toLocaleString('pt-BR')}` : '',
+        ];
+        return linhas.filter(Boolean).join('\n');
+    }
+
+    // Manda fotos + texto pelo compartilhar do celular (WhatsApp, e-mail...).
+    async function enviarServico(s) {
+        const texto = textoServico(s);
+        const os = osDe(s) || 'parada';
+        const arquivos = [];
+        for (const pid of s.photos || []) {
+            const blob = await photoDB.get(pid).catch(() => null);
+            if (!blob) continue;
+            const etapa = (s.photoEtapas || {})[pid] || 'foto';
+            const nome = `OS${os}_${String(arquivos.length + 1).padStart(2, '0')}_${norm(etapa).replace(/[^a-z0-9]+/g, '-')}.jpg`;
+            arquivos.push(new File([blob], nome, { type: 'image/jpeg' }));
+        }
+        if (navigator.canShare && navigator.canShare({ files: arquivos, text: texto })) {
+            try { await navigator.share({ files: arquivos, text: texto }); return; }
+            catch (e) { if (e.name === 'AbortError') return; }
+        }
+        // Computador ou navegador sem compartilhar: copia o texto e baixa as fotos.
+        await copy(texto);
+        arquivos.forEach((f, n) => setTimeout(() => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        }, n * 300));
+        toast('Texto copiado e fotos baixadas. Cole no WhatsApp junto com as fotos.', 6000);
+    }
+
+    function enviarDialog(id, fim) {
+        const s = route().stops.find(x => x.id === id);
+        if (!s) return;
+        openDialog(fim ? '🎉 Rota concluída!' : (s.status === 'done' ? '✅ Parada concluída' : 'Parada marcada como não feita'), `
+            <p>Mande agora as fotos e as medidas para o escritório:</p>
+            <pre class="resumo-servico">${esc(textoServico(s))}</pre>
+        `, [
+            { label: 'Depois' },
+            { label: '📤 Enviar no WhatsApp', cls: 'primary', onClick: async () => { await enviarServico(s); } },
+        ]);
     }
 
     function routesDialog() {
