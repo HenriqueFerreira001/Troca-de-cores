@@ -1522,6 +1522,9 @@
     function settingsDialog() {
         const s = state.settings;
         openDialog('Configurações', `
+            <label>Base (de onde a equipe sai)</label>
+            <div class="muted">★ ${esc(s.base ? s.base.addr : 'nenhuma')}</div>
+            ${!s.base || s.base.addr !== defaultSettings.base.addr ? '<button type="button" class="secondary" id="st-usina">Voltar a base para a Usina</button>' : ''}
             <label>Otimizar por</label>
             <select id="st-by">
                 <option value="duration">Menor tempo de viagem</option>
@@ -1566,6 +1569,14 @@
                 },
             },
         ]);
+        const usina = $('#st-usina');
+        if (usina) usina.onclick = () => {
+            s.base = { ...defaultSettings.base };
+            route().start = { ...s.base };
+            invalidate(); save(); render(); fitMap();
+            $('#dialog').close();
+            toast('Base de volta para a Usina.');
+        };
         $('#st-by').value = s.optimizeBy;
         $('#st-nav').value = s.navApp;
         $('#st-country').value = s.country;
@@ -1638,7 +1649,8 @@
         $('#btn-start-base').classList.toggle('hidden', !r.start || isBase(r.start));
         $('#btn-start-base').textContent = '☆ Fixar como base';
         $('#btn-start-base').title = 'Toda rota nova vai começar deste ponto';
-        $('#btn-start-usebase').classList.toggle('hidden', !!r.start || !state.settings.base);
+        $('#btn-start-usebase').classList.toggle('hidden', !state.settings.base || isBase(r.start));
+        $('#btn-start-usebase').textContent = '★ Usar base';
         const optNear = $('#end-mode').querySelector('option[value="near"]');
         optNear.textContent = r.start ? 'Terminar perto da saída (equipe volta pra base)' : 'Terminar perto da saída (defina a saída)';
         $('#end-mode').value = r.endMode;
@@ -1795,6 +1807,7 @@
             const b = state.settings.base;
             if (!b) return;
             route().start = { ...b }; invalidate(); save(); render(); fitMap();
+            toast('Saída: ' + b.addr);
         };
         $('#btn-end-edit').onclick = () => setSearchTarget('end');
         $('#search-target-cancel').onclick = () => setSearchTarget(null);
