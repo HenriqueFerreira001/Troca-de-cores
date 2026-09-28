@@ -18,6 +18,8 @@
     const PHOTON = 'https://photon.komoot.io';
     const VIACEP = 'https://viacep.com.br/ws';
     const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    // Mesma SheetJS, mas grava cores nas células (para a lista da equipe).
+    const XLSX_STYLE_URL = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
     const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
     const TABLE_CHUNK = 50;   // OSRM público aceita até 100 coordenadas por consulta
     const ROUTE_CHUNK = 90;
@@ -1065,6 +1067,67 @@
     // ======================================================================
     // Exportar
     // ======================================================================
+    function exportar() {
+        const r = route();
+        if (!r.stops.length) return toast('Nada para exportar.');
+        openDialog('Exportar planilha', `
+            <p><b>Lista para a equipe:</b> Excel com a saída em cima e as paradas em ordem, só com rua, número e bairro. Urgente pintado de vermelho e média de amarelo.</p>
+            <p class="muted"><b>Planilha completa:</b> com OS, telefone, coordenadas, horário e situação de cada parada.</p>
+        `, [
+            { label: 'Cancelar' },
+            { label: 'Planilha completa', onClick: () => { exportCSV(); } },
+            { label: 'Lista para a equipe', cls: 'primary', onClick: () => { exportEquipe().catch(e => { busy(false); toast(e.message, 5000); }); } },
+        ]);
+    }
+
+    // "RUA CACTOS, 367 - JD PINHEIRINHO - EMBU" -> "Rua Cactos, 367 - Jardim Pinheirinho, Embu"
+    function enderecoLimpo(addr) {
+        let t = String(addr || '').replace(/^[📍★\s]+/u, '').trim();
+        if (t === t.toUpperCase()) {
+            const acento = { INDIA: 'ÍNDIA', JOSE: 'JOSÉ', ANTONIO: 'ANTÔNIO', GONCALVES: 'GONÇALVES', ROSARIO: 'ROSÁRIO', INDEPENDENCIA: 'INDEPENDÊNCIA', VITORIA: 'VITÓRIA', GLORIA: 'GLÓRIA', FLORIDA: 'FLÓRIDA', PASCOA: 'PÁSCOA', AGUA: 'ÁGUA', AGUAS: 'ÁGUAS', MARCIO: 'MÁRCIO', SERGIO: 'SÉRGIO', FATIMA: 'FÁTIMA', LUCIA: 'LÚCIA', CECILIA: 'CECÍLIA', EMILIA: 'EMÍLIA', JARDIM: 'JARDIM', CHACARAS: 'CHÁCARAS', CHACARA: 'CHÁCARA', PRACA: 'PRAÇA', PEDREIRA: 'PEDREIRA', EUGENIA: 'EUGÊNIA', BRANDAO: 'BRANDÃO', LOURENCO: 'LOURENÇO', CAPITAO: 'CAPITÃO', CRISTOVAO: 'CRISTÓVÃO' };
+            t = t.replace(/\bS\.?\s+(?=[A-Z]{3})/g, 'SÃO ')
+                .replace(/\b[A-Z]+\b/g, w => acento[w] || w.replace(/CAO$/, 'ÇÃO').replace(/AO$/, 'ÃO'));
+            t = geo.expand(t).toLowerCase()
+                .replace(/(^|[\s(\/-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
+                .replace(/\s(Da|De|Do|Das|Dos|E)\s/g, m => m.toLowerCase())
+                .replace(/\b(Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xi|Xii)\b/g, m => m.toUpperCase());
+        }
+        const partes = t.split(/\s+-\s+/);
+        if (partes.length >= 3) t = partes[0] + ' - ' + partes.slice(1).join(', ');
+        return t;
+    }
+
+    async function exportEquipe() {
+        const r = route();
+        if (!r.optimized) toast('Atenção: a rota ainda não foi otimizada. A lista sai na ordem atual.', 5000);
+        if (!window.XLSX || !window.XLSX.style_version) {
+            busy('Preparando a planilha…');
+            await loadScript(XLSX_STYLE_URL);
+            busy(false);
+        }
+        const X = window.XLSX;
+        const borda = { style: 'thin', color: { rgb: 'FFBFBFBF' } };
+        const base = { font: { name: 'Calibri', sz: 12 }, border: { top: borda, bottom: borda, left: borda, right: borda }, alignment: { vertical: 'center' } };
+        const cor = {
+            alta: { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF0000' } }, font: { name: 'Calibri', sz: 12, bold: true, color: { rgb: 'FFFFFFFF' } } },
+            media: { fill: { patternType: 'solid', fgColor: { rgb: 'FFFFFF00' } }, font: { name: 'Calibri', sz: 12, bold: true, color: { rgb: 'FF000000' } } },
+        };
+        const linhas = [];
+        if (r.start) linhas.push({ n: '', addr: enderecoLimpo(r.start.addr), estilo: { font: { name: 'Calibri', sz: 12, bold: true } } });
+        r.stops.forEach((st, i) => linhas.push({ n: i + 1, addr: enderecoLimpo(st.addr), estilo: cor[st.urgent] || {} }));
+        const ws = {};
+        linhas.forEach((l, i) => {
+            ws[X.utils.encode_cell({ r: i, c: 0 })] = { t: l.n === '' ? 's' : 'n', v: l.n, s: { ...base, ...l.estilo, alignment: { horizontal: 'right', vertical: 'center' } } };
+            ws[X.utils.encode_cell({ r: i, c: 1 })] = { t: 's', v: l.addr, s: { ...base, ...l.estilo } };
+        });
+        ws['!ref'] = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length - 1, c: 1 } });
+        ws['!cols'] = [{ wch: 5 }, { wch: Math.min(100, Math.max(40, ...linhas.map(l => l.addr.length + 2))) }];
+        ws['!rows'] = linhas.map(() => ({ hpt: 20 }));
+        const wb = X.utils.book_new();
+        X.utils.book_append_sheet(wb, ws, 'Rota');
+        X.writeFile(wb, `${r.name.replace(/[^\w\- ]+/g, '_')}.xlsx`);
+    }
+
     function exportCSV() {
         const r = route();
         if (!r.stops.length) return toast('Nada para exportar.');
@@ -1751,7 +1814,7 @@
         $('#btn-settings').onclick = settingsDialog;
         $('#btn-share').onclick = shareDialog;
         $('#btn-optimize').onclick = optimize;
-        $('#btn-export').onclick = exportCSV;
+        $('#btn-export').onclick = exportar;
         $('#btn-invert').onclick = async () => {
             const r = route();
             const done = r.stops.filter(s => s.status !== 'pending');
