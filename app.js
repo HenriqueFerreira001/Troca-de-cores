@@ -919,6 +919,8 @@
         busy(false);
         render();
         fitMap();
+        // Volta a lista para o topo (Otimizar e Exportar ficam lá em cima).
+        $('.panel').scrollTop = 0;
         let msg = `${found} endereço(s) localizados.`;
         if (approx) msg += ` ${approx} com posição aproximada (confira no mapa).`;
         if (notFound) msg += ` ${notFound} não encontrado(s) — toque neles para corrigir.`;
