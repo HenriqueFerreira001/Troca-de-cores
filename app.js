@@ -125,6 +125,8 @@
         defaultCity: 'Embu das Artes, SP',
         // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
         base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
+        // Todas as bases (de onde as equipes saem). Cada uma vira um botão na Saída.
+        bases: [{ nome: 'Usina', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 }],
         // Envio direto para o sistema da empresa (docs/INTEGRACAO-SISTEMA.md). Vazio = desligado.
         sistemaUrl: '',
         sistemaChave: '',
@@ -142,6 +144,11 @@
                 s.settings = Object.assign({}, defaultSettings, s.settings);
                 Object.values(s.routes || {}).forEach(r => (r.stops || []).forEach(st => { if (st.urgent === true) st.urgent = 'alta'; }));
                 if (!s.settings.base) s.settings.base = { ...defaultSettings.base };
+                s.settings.bases = JSON.parse(JSON.stringify(Array.isArray(s.settings.bases) ? s.settings.bases : []));
+                if (!s.settings.bases.length) {
+                    const usina = s.settings.base.addr === defaultSettings.base.addr ? s.settings.base : defaultSettings.base;
+                    s.settings.bases = [{ nome: 'Usina', ...usina }];
+                }
                 if (!s.settings.migrouTempo) {
                     // Comparação com o Zeo: ele otimiza por tempo e termina na última parada.
                     s.settings.migrouTempo = true;
@@ -157,7 +164,7 @@
                 if (s.routes && s.routes[s.current]) return s;
             }
         } catch (e) { /* armazenamento indisponível */ }
-        state = { settings: { ...defaultSettings } };
+        state = { settings: { ...defaultSettings, bases: JSON.parse(JSON.stringify(defaultSettings.bases)) } };
         const r = newRoute();
         return { current: r.id, routes: { [r.id]: r }, settings: state.settings };
     }
@@ -785,6 +792,8 @@
                 const ll = sm.getLatLng();
                 r.start = { ...r.start, lat: ll.lat, lng: ll.lng };
                 if (isBase(r.start)) state.settings.base = { ...r.start };
+                const bb = (state.settings.bases || []).find(b => b.addr === r.start.addr);
+                if (bb) { bb.lat = ll.lat; bb.lng = ll.lng; }
                 invalidate(); save(); render();
                 toast('Saída ajustada. Otimize de novo.');
             });
@@ -1087,6 +1096,19 @@
     }
 
     // "RUA CACTOS, 367 - JD PINHEIRINHO - EMBU" -> "Rua Cactos, 367 - Jardim Pinheirinho, Embu"
+    // Coordenadas de um link do Google Maps ou de texto "-23.45, -46.21".
+    function coordsDoTexto(t) {
+        const pads = [/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /@(-?\d+\.\d+),\s*(-?\d+\.\d+)/, /[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, /^\s*(-?\d{1,2}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)\s*$/];
+        for (const re of pads) {
+            const m = String(t).match(re);
+            if (m) {
+                const lat = parseFloat(m[1].replace(',', '.')), lng = parseFloat(m[2].replace(',', '.'));
+                if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+            }
+        }
+        return null;
+    }
+
     function enderecoLimpo(addr) {
         const acento = { INDIA: 'ÍNDIA', JOSE: 'JOSÉ', ANTONIO: 'ANTÔNIO', GONCALVES: 'GONÇALVES', ROSARIO: 'ROSÁRIO', INDEPENDENCIA: 'INDEPENDÊNCIA', VITORIA: 'VITÓRIA', GLORIA: 'GLÓRIA', FLORIDA: 'FLÓRIDA', PASCOA: 'PÁSCOA', AGUA: 'ÁGUA', AGUAS: 'ÁGUAS', MARCIO: 'MÁRCIO', SERGIO: 'SÉRGIO', FATIMA: 'FÁTIMA', LUCIA: 'LÚCIA', CECILIA: 'CECÍLIA', EMILIA: 'EMÍLIA', CHACARAS: 'CHÁCARAS', CHACARA: 'CHÁCARA', PRACA: 'PRAÇA', EUGENIA: 'EUGÊNIA', LOURENCO: 'LOURENÇO', CRISTOVAO: 'CRISTÓVÃO', MENDONCA: 'MENDONÇA', ESPERANTINOPOLIS: 'ESPERANTINÓPOLIS', SINHA: 'SINHÁ', NHOCUNE: 'NHOCUNÉ', RE: 'RÉ', GODOI: 'GODÓI' };
         // Cada pedaço (rua, bairro, cidade) só é ajeitado se veio todo em maiúsculas.
@@ -1824,9 +1846,15 @@
     function settingsDialog() {
         const s = state.settings;
         openDialog('Configurações', `
-            <label>Base (de onde a equipe sai)</label>
-            <div class="muted">★ ${esc(s.base ? s.base.addr : 'nenhuma')}</div>
-            ${!s.base || s.base.addr !== defaultSettings.base.addr ? '<button type="button" class="secondary" id="st-usina">Voltar a base para a Usina</button>' : ''}
+            <label>Bases (de onde as equipes saem)</label>
+            <div id="st-bases"></div>
+            <details class="add-base">
+                <summary>+ Adicionar base</summary>
+                <input type="text" id="st-base-nome" placeholder="Nome (ex.: Fábio)">
+                <input type="text" id="st-base-onde" placeholder="Link do Google Maps, coordenadas ou endereço">
+                <p class="muted">Mais preciso: no Google Maps, segure o dedo em cima do lugar exato; aparecem os números (ex.: -23.4512, -46.2134). Copie e cole aqui.</p>
+                <button type="button" class="secondary" id="st-base-add">Adicionar</button>
+            </details>
             <label>Otimizar por</label>
             <select id="st-by">
                 <option value="duration">Menor tempo de viagem</option>
@@ -1882,6 +1910,41 @@
                 },
             },
         ]);
+        const listaBases = () => {
+            $('#st-bases').innerHTML = s.bases.map((b, i) => `<div class="base-item"><div class="grow"><b>🏭 ${esc(b.nome)}</b>${s.base && s.base.addr === b.addr ? ' <small class="muted">(padrão)</small>' : ''}<br><small class="muted">${esc(b.addr)}</small></div>${s.bases.length > 1 ? `<button type="button" class="x-btn" data-del="${i}" title="Apagar base">✕</button>` : ''}</div>`).join('');
+        };
+        listaBases();
+        $('#st-bases').onclick = (e) => {
+            const bt = e.target.closest('[data-del]');
+            if (!bt) return;
+            const [b] = s.bases.splice(+bt.dataset.del, 1);
+            if (s.base && s.base.addr === b.addr) s.base = { addr: s.bases[0].addr, lat: s.bases[0].lat, lng: s.bases[0].lng };
+            save(); render(); listaBases();
+        };
+        $('#st-base-add').onclick = async () => {
+            const nome = $('#st-base-nome').value.trim();
+            const onde = $('#st-base-onde').value.trim();
+            if (!nome || !onde) return toast('Preencha o nome e o lugar.');
+            let ponto = coordsDoTexto(onde);
+            if (ponto) {
+                busy('Conferindo o lugar…');
+                const addr = await geo.reverse(ponto.lat, ponto.lng).catch(() => '');
+                busy(false);
+                ponto.addr = `${nome} — ${addr || onde}`;
+            } else {
+                if (/goo\.gl|maps\.app/i.test(onde)) return toast('Esse link curto não traz o ponto. No Google Maps, segure o dedo no lugar e copie os números que aparecem.', 7000);
+                busy('Procurando o endereço…');
+                const res = await geo.search(onde).catch(() => null);
+                busy(false);
+                if (!res) return toast('Não achei esse endereço. Cole as coordenadas do Google Maps.', 5000);
+                ponto = { lat: res.lat, lng: res.lng, addr: `${nome} — ${onde}` };
+                if (res.precise === false) toast('Posição aproximada: depois arraste o pino SAÍDA para o lugar exato.', 6000);
+            }
+            s.bases.push({ nome, ...ponto });
+            $('#st-base-nome').value = ''; $('#st-base-onde').value = '';
+            save(); render(); listaBases();
+            toast(`Base "${nome}" adicionada. Ela aparece como botão na Saída.`, 5000);
+        };
         const usina = $('#st-usina');
         if (usina) usina.onclick = () => {
             s.base = { ...defaultSettings.base };
@@ -1959,10 +2022,10 @@
         const r = route();
         $('#route-name').value = r.name;
         $('#start-label').textContent = r.start ? (isBase(r.start) ? '★ ' : '') + r.start.addr : 'Sem saída — ao otimizar, usa a base';
-        // A equipe sempre sai da Usina: um botão só, que aparece quando a saída é outra.
+        // Um botão para cada base cadastrada (a que já é a saída não aparece).
         $('#btn-start-base').classList.add('hidden');
-        $('#btn-start-usebase').classList.toggle('hidden', !!r.start && r.start.addr === defaultSettings.base.addr);
-        $('#btn-start-usebase').textContent = '🏭 Usina';
+        $('#start-bases').innerHTML = (state.settings.bases || []).map((b, i) => (r.start && r.start.addr === b.addr) ? ''
+            : `<button type="button" class="small-btn" data-base="${i}" title="Sair de: ${esc(b.addr)}">🏭 ${esc(b.nome)}</button>`).join('');
         const optNear = $('#end-mode').querySelector('option[value="near"]');
         optNear.textContent = r.start ? 'Terminar perto da saída (equipe volta pra base)' : 'Terminar perto da saída (defina a saída)';
         $('#end-mode').value = r.endMode;
@@ -2115,12 +2178,16 @@
             toast('Saída fixada como base: toda rota nova começa daqui.');
             save(); render();
         };
-        $('#btn-start-usebase').onclick = () => {
-            // Usa a Usina (mantendo o ajuste fino do ponto, se já foi arrastado) e volta ela a ser a base.
-            const b = state.settings.base && state.settings.base.addr === defaultSettings.base.addr ? state.settings.base : { ...defaultSettings.base };
-            state.settings.base = { ...b };
-            route().start = { ...b }; invalidate(); save(); render(); fitMap();
-            toast('Saída: Usina. Toque em Otimizar rota.');
+        $('#start-bases').onclick = (e) => {
+            const bt = e.target.closest('[data-base]');
+            if (!bt) return;
+            const b = state.settings.bases[+bt.dataset.base];
+            if (!b) return;
+            // Vira a saída desta rota e a base das próximas rotas novas.
+            const ponto = { addr: b.addr, lat: b.lat, lng: b.lng };
+            state.settings.base = { ...ponto };
+            route().start = { ...ponto }; invalidate(); save(); render(); fitMap();
+            toast(`Saída: ${b.nome}. Toque em Otimizar rota.`);
         };
         $('#btn-end-edit').onclick = () => setSearchTarget('end');
         $('#search-target-cancel').onclick = () => setSearchTarget(null);
