@@ -126,7 +126,11 @@
         // Ponto de saída fixo: toda rota nova já começa daqui. Pode ser trocado em "Início".
         base: { addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
         // Todas as bases (de onde as equipes saem). Cada uma vira um botão na Saída.
-        bases: [{ nome: 'Usina', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 }],
+        // Fábio: CEP 08771-001 (Parque Residencial Itapeti), posição das casas desse CEP no cadastro do IBGE.
+        bases: [
+            { nome: 'Usina', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
+            { nome: 'Fábio', addr: 'Fábio — Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes', lat: -23.4530, lng: -46.2680 },
+        ],
         // Envio direto para o sistema da empresa (docs/INTEGRACAO-SISTEMA.md). Vazio = desligado.
         sistemaUrl: '',
         sistemaChave: '',
@@ -148,6 +152,11 @@
                 if (!s.settings.bases.length) {
                     const usina = s.settings.base.addr === defaultSettings.base.addr ? s.settings.base : defaultSettings.base;
                     s.settings.bases = [{ nome: 'Usina', ...usina }];
+                }
+                // Base do Fábio já cadastrada para todo mundo (uma vez; se apagarem, não volta).
+                if (!s.settings.migrouFabio) {
+                    s.settings.migrouFabio = true;
+                    if (!s.settings.bases.some(b => /f[aá]bio/i.test(b.nome))) s.settings.bases.push({ ...defaultSettings.bases[1] });
                 }
                 if (!s.settings.migrouTempo) {
                     // Comparação com o Zeo: ele otimiza por tempo e termina na última parada.

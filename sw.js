@@ -1,6 +1,6 @@
 // Guarda os arquivos do app para abrir mais rápido e funcionar com internet fraca.
 // Mapas, endereços e rotas continuam vindo da internet.
-const CACHE = 'rotacerta-v2';
+const CACHE = 'rotacerta-v3';
 const FILES = [
     './', 'index.html', 'app.css', 'app.js', 'solver.js', 'enderecos.js', 'manifest.json', 'icon.svg',
     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
@@ -23,7 +23,8 @@ self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET' || !isApp) return;
     // Rede primeiro (pega versão nova), cache se estiver sem internet.
     e.respondWith(
-        fetch(e.request)
+        // no-cache: sempre confere no servidor se tem versão nova (não usa a cópia de 10 min do navegador).
+        fetch(e.request, { cache: 'no-cache' })
             .then(res => {
                 const copy = res.clone();
                 caches.open(CACHE).then(c => c.put(e.request, copy));
