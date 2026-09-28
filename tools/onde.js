@@ -1,48 +1,37 @@
-// Procura um endereço nos mapas gratuitos e mostra o que cada um acha (uso pontual).
+// Procura uma estrada no OpenStreetMap (Overpass) e mostra o traçado e os marcos de km (uso pontual).
 const UA = 'RotaCerta/1.0 (github.com/HenriqueFerreira001/Troca-de-cores)';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function nom(params) {
-    await sleep(1200);
-    const qs = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '5', countrycodes: 'br', ...params });
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + qs, { headers: { 'User-Agent': UA } });
-    return r.ok ? r.json() : [];
+const bbox = '-23.62,-46.40,-23.38,-46.05'; // Mogi das Cruzes e arredores
+async function overpass(q) {
+    for (const url of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+        try {
+            const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' } });
+            if (r.ok) return r.json();
+            console.log(url, r.status);
+        } catch (e) { console.log(url, e.message); }
+    }
+    return { elements: [] };
 }
+const km = (a, b) => { const R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lon - a.lon) * Math.PI / 180; const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
 (async () => {
-    const qs = [
-        { q: 'Estrada do Itapeti das Furnas, Mogi das Cruzes' },
-        { q: 'Parque Residencial Itapeti, Mogi das Cruzes' },
-        { q: 'Estrada do Itapeti, Mogi das Cruzes' },
-        { postalcode: '08771-001', country: 'Brasil' },
-    ];
-    let estrada = null, bairro = null;
-    for (const p of qs) {
-        const res = await nom({ ...p, polygon_geojson: '1' });
-        console.log('\n## ' + JSON.stringify(p));
-        for (const x of res) {
-            console.log(`- ${x.display_name} | ${x.lat},${x.lon} | ${x.category}/${x.type} | geo ${x.geojson && x.geojson.type} ${x.geojson && x.geojson.coordinates && JSON.stringify(x.geojson.coordinates).length}`);
-            if (!estrada && /Itapeti/i.test(x.display_name) && x.geojson && /LineString/.test(x.geojson.type)) estrada = x;
-            if (!bairro && /Residencial Itapeti/i.test(x.display_name)) bairro = x;
-        }
+    const vias = await overpass(`[out:json][timeout:60];way["name"~"Itapeti",i](${bbox});out tags geom;`);
+    const nomes = {};
+    for (const w of vias.elements) {
+        const n = w.tags.name;
+        (nomes[n] = nomes[n] || []).push(w);
     }
-    try {
-        const v = await (await fetch('https://viacep.com.br/ws/08771001/json/')).json();
-        console.log('\n## ViaCEP', JSON.stringify(v));
-    } catch (e) { console.log('ViaCEP falhou', e.message); }
-    try {
-        const ph = await (await fetch('https://photon.komoot.io/api/?q=' + encodeURIComponent('Estrada do Itapeti das Furnas Mogi das Cruzes') + '&limit=5')).json();
-        console.log('\n## Photon'); ph.features.forEach(f => console.log('-', JSON.stringify(f.properties.name), f.properties.district || '', f.properties.city || '', f.geometry.coordinates.reverse().join(',')));
-    } catch (e) { console.log('Photon falhou', e.message); }
-    if (estrada) {
-        // Pontos da estrada, com a distância acumulada desde cada ponta (para achar o "km 11").
-        const lines = estrada.geojson.type === 'LineString' ? [estrada.geojson.coordinates] : estrada.geojson.coordinates;
-        const pts = lines.flat();
-        const km = (a, b) => { const R = 6371, dLat = (b[1] - a[1]) * Math.PI / 180, dLng = (b[0] - a[0]) * Math.PI / 180; const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * Math.PI / 180) * Math.cos(b[1] * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-        let d = 0; const acc = pts.map((p, i) => (d += i ? km(pts[i - 1], p) : 0));
-        console.log(`\n## Estrada: ${pts.length} pontos, ${d.toFixed(1)} km no total; pontas ${pts[0].slice().reverse()} e ${pts[pts.length - 1].slice().reverse()}`);
-        if (bairro) {
-            const c = [+bairro.lon, +bairro.lat];
-            let best = 0; pts.forEach((p, i) => { if (km(p, c) < km(pts[best], c)) best = i; });
-            console.log(`Ponto da estrada mais perto do bairro: ${pts[best][1]},${pts[best][0]} (a ${km(pts[best], c).toFixed(2)} km do centro do bairro; ${acc[best].toFixed(1)} km de uma ponta, ${(d - acc[best]).toFixed(1)} km da outra)`);
-        }
+    for (const [n, ws] of Object.entries(nomes)) {
+        const len = ws.reduce((t, w) => t + w.geometry.reduce((s, p, i) => s + (i ? km(w.geometry[i - 1], p) : 0), 0), 0);
+        const ref = [...new Set(ws.map(w => w.tags.ref).filter(Boolean))].join(',');
+        console.log(`## ${n} ${ref ? '(' + ref + ')' : ''} — ${ws.length} trechos, ${len.toFixed(1)} km, highway=${[...new Set(ws.map(w => w.tags.highway))].join(',')}`);
+        ws.forEach(w => console.log(`   trecho ${w.id}: ${w.geometry[0].lat.toFixed(5)},${w.geometry[0].lon.toFixed(5)} → ${w.geometry[w.geometry.length - 1].lat.toFixed(5)},${w.geometry[w.geometry.length - 1].lon.toFixed(5)} (${w.geometry.length} pts)`));
     }
+    const marcos = await overpass(`[out:json][timeout:60];(node["highway"="milestone"](${bbox});node["distance"](${bbox}););out;`);
+    console.log(`\n## Marcos de km (${marcos.elements.length})`);
+    marcos.elements.forEach(m => console.log(`   ${m.lat},${m.lon} ${JSON.stringify(m.tags)}`));
+    const bairro = await overpass(`[out:json][timeout:60];(node["name"~"Itapeti",i](${bbox});relation["name"~"Itapeti",i](${bbox}););out center tags;`);
+    console.log(`\n## Lugares com "Itapeti"`);
+    bairro.elements.forEach(b => console.log(`   ${b.type} ${JSON.stringify(b.tags.name)} ${b.tags.place || b.tags.boundary || b.tags.landuse || ''} ${(b.center || b).lat},${(b.center || b).lon}`));
+    const perto = await overpass(`[out:json][timeout:60];(node["name"~"Furnas|Itapeti",i](${bbox});way["name"~"Furnas",i](${bbox}););out center tags;`);
+    console.log(`\n## "Furnas"`);
+    perto.elements.forEach(b => console.log(`   ${b.type} ${JSON.stringify(b.tags.name)} ${b.tags.highway || b.tags.place || ''} ${(b.center || b).lat},${(b.center || b).lon}`));
 })();
