@@ -73,12 +73,12 @@ async function nominatim(params) {
 
 // Mesma estratégia do app: primeiro o IBGE (número exato); depois o mapa gratuito
 // (rua+número+cidade; texto com bairro; sem bairro).
-async function geocode(p, cidade, uf, city) {
+async function geocode(p, cidade, uf, city, perto) {
     let ibge = null;
     if (city) {
-        const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro });
+        const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro, perto });
         if (r && !r.ambiguous && r.lat != null) {
-            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, bairroOk: r.bairroOk, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
             // Número exato ou estimativa boa: não precisa do mapa gratuito.
             if (ibge.precise) return ibge;
         }
@@ -136,9 +136,26 @@ async function main() {
         const g = await geocode(p, cfg.cidade, cfg.uf, city).catch(() => null);
         stops.push({ ...p, geo: g });
     }
+    // Igual ao app: parada a mais de 15 km do miolo da lista é procurada de novo perto
+    // das outras; se o bairro não bateu e não há outra por perto, fica sem posição.
+    const achadas = stops.filter(s => s.geo);
+    if (achadas.length >= 4) {
+        const med = (arr) => { const a = [...arr].sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+        const miolo = { lat: med(achadas.map(s => s.geo.lat)), lng: med(achadas.map(s => s.geo.lng)) };
+        const dist = (a) => Math.hypot(a.lat - miolo.lat, (a.lng - miolo.lng) * Math.cos(miolo.lat * Math.PI / 180)) * 111.2;
+        for (const s of stops) {
+            if (!s.geo || dist(s.geo) <= 15) continue;
+            const g2 = await geocode(s, cfg.cidade, cfg.uf, city, { lat: miolo.lat, lng: miolo.lng, raio: 15 }).catch(() => null);
+            if (g2 && dist(g2) <= 15) s.geo = { ...g2, found: g2.found + ' (refeito perto das outras)' };
+            else if (!s.geo.bairroOk) { log(`- ${s.rua}, ${s.numero}: achada longe das outras (${s.geo.found}); ficou sem posição`); s.geo = null; }
+        }
+    }
     // Início: { rua, numero, bairro } ou texto. Procura no IBGE e depois no mapa gratuito.
     let start = null;
-    if (cfg.inicio) {
+    if (cfg.inicio && cfg.inicio.lat != null) {
+        // Base com coordenadas fixas (igual às bases cadastradas no app).
+        start = { lat: cfg.inicio.lat, lng: cfg.inicio.lng, label: cfg.inicio.nome || 'Base' };
+    } else if (cfg.inicio) {
         const ini = typeof cfg.inicio === 'string' ? { ...Enderecos.parse(cfg.inicio), texto: cfg.inicio } : { street: cfg.inicio.rua, number: cfg.inicio.numero, bairro: cfg.inicio.bairro, texto: cfg.inicio.nome || cfg.inicio.rua };
         // O início pode ser em outra cidade (ex.: base em Embu, paradas em São Paulo).
         const cityIni = cfg.inicio.cidade ? ibgeCity(cfg.inicio.cidade) : city;
@@ -202,7 +219,9 @@ async function main() {
     if (livre && order.length > 1) {
         // Igual ao app: serviço longe da base → começa na ponta mais longe; perto → pela mais perto.
         const maisPerto = Math.min(...order.map(i => matrix[0][i]));
-        const longe = cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60;
+        // Regra da base (igual a ⚙ Configurações → Bases): perto | longe | auto.
+        const longe = cfg.regra === 'perto' ? false : cfg.regra === 'longe' ? true
+            : (cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60);
         const a = order[0], z = order[order.length - 1];
         if (longe ? matrix[a][0] < matrix[z][0] : matrix[0][z] < matrix[0][a]) order = [...order].reverse();
     }

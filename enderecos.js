@@ -197,6 +197,22 @@
         // O bairro informado bateu com o cadastro? (serve para escolher a cidade certa)
         const bairroOk = Math.max(...melhor.pts.map(x => x.bn)) >= 0.8;
 
+        // Nome repetido na cidade (Viela Um, Rua A...) e o bairro não bateu: usa a rua
+        // que fica perto das outras paradas da lista (p.perto). Longe de tudo: não chuta.
+        if (p.perto && !bairroOk) {
+            const km = (x) => Math.hypot(x.lat - p.perto.lat, (x.lng - p.perto.lng) * Math.cos(p.perto.lat * Math.PI / 180)) * 111.2;
+            let alvo = null;
+            for (const nome of nomesOk) {
+                const pts = toPts(nome);
+                const d = Math.min(...pts.map(km));
+                if (!alvo || d < alvo.d) alvo = { nome, pts, d };
+            }
+            const raio = p.perto.raio || 10;
+            if (!alvo || alvo.d > raio) return { ambiguous: true, found: `${titulo(melhor.nome)} (existe em outros lugares, longe das outras paradas; confira o bairro)` };
+            melhor = { nome: alvo.nome, pts: alvo.pts, nota: 0 };
+            pontos = alvo.pts.filter(x => km(x) <= alvo.d + 2);
+        }
+
         // 2) Ruas com o mesmo nome em lugares diferentes da cidade: fica só com o trecho
         //    que passa pelo bairro informado (e a continuação dele nos bairros vizinhos).
         const ancoras = pontos.filter(x => x.bn > 0);
