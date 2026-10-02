@@ -946,6 +946,29 @@
                 if (r2 || !results[i]) results[i] = r2;
             }
         }
+        // Parada muito longe de todas as outras (ex.: "Viela Um" achada do outro lado da
+        // cidade): procura de novo perto do miolo da lista; se não achar, fica sem posição
+        // (melhor corrigir na mão do que a rota inteira sair torta).
+        const achados = results.filter(r => r && r.lat != null);
+        if (achados.length >= 4) {
+            const med = (arr) => { const a = [...arr].sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+            const miolo = { lat: med(achados.map(r => r.lat)), lng: med(achados.map(r => r.lng)) };
+            const raioKm = 15;
+            for (let i = 0; i < items.length; i++) {
+                const r = results[i];
+                if (!r || items[i].lat != null || haversine(r, miolo) <= raioKm * 1000) continue;
+                busy('Conferindo endereço longe das outras paradas…', 0.97);
+                const it = items[i];
+                const cidade = (r.city || principal || '').split(/\s*,\s*/);
+                const parts = { ...(it.parts || Enderecos.parse(it.addr)), perto: { lat: miolo.lat, lng: miolo.lng, raio: raioKm } };
+                if (cidade[0] && !parts.city) { parts.city = cidade[0]; parts.uf = parts.uf || cidade[1] || ''; }
+                let r2 = null;
+                try { r2 = await locate({ ...it, parts }); } catch (e) { r2 = null; }
+                if (r2 && haversine(r2, miolo) <= raioKm * 1000) results[i] = r2;
+                // Bairro não bateu (nota < 3) e não há outra rua com esse nome por perto: sem posição.
+                else if (!(r.nota >= 3)) results[i] = null;
+            }
+        }
         for (let i = 0; i < items.length; i++) {
             const it = items[i], res = results[i];
             if (res) { found++; if (res.precise === false) approx++; } else notFound++;

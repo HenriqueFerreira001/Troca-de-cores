@@ -73,12 +73,12 @@ async function nominatim(params) {
 
 // Mesma estratégia do app: primeiro o IBGE (número exato); depois o mapa gratuito
 // (rua+número+cidade; texto com bairro; sem bairro).
-async function geocode(p, cidade, uf, city) {
+async function geocode(p, cidade, uf, city, perto) {
     let ibge = null;
     if (city) {
-        const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro });
+        const r = await Enderecos.find(city, { street: p.rua, number: p.numero, bairro: p.bairro, perto });
         if (r && !r.ambiguous && r.lat != null) {
-            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
+            ibge = { lat: r.lat, lng: r.lng, precise: r.exact || r.good, bairroOk: r.bairroOk, found: `${r.found} [IBGE ${r.exact ? 'exato' : 'estimado'}]` };
             // Número exato ou estimativa boa: não precisa do mapa gratuito.
             if (ibge.precise) return ibge;
         }
@@ -135,6 +135,20 @@ async function main() {
     for (const p of cfg.paradas) {
         const g = await geocode(p, cfg.cidade, cfg.uf, city).catch(() => null);
         stops.push({ ...p, geo: g });
+    }
+    // Igual ao app: parada a mais de 15 km do miolo da lista é procurada de novo perto
+    // das outras; se o bairro não bateu e não há outra por perto, fica sem posição.
+    const achadas = stops.filter(s => s.geo);
+    if (achadas.length >= 4) {
+        const med = (arr) => { const a = [...arr].sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+        const miolo = { lat: med(achadas.map(s => s.geo.lat)), lng: med(achadas.map(s => s.geo.lng)) };
+        const dist = (a) => Math.hypot(a.lat - miolo.lat, (a.lng - miolo.lng) * Math.cos(miolo.lat * Math.PI / 180)) * 111.2;
+        for (const s of stops) {
+            if (!s.geo || dist(s.geo) <= 15) continue;
+            const g2 = await geocode(s, cfg.cidade, cfg.uf, city, { lat: miolo.lat, lng: miolo.lng, raio: 15 }).catch(() => null);
+            if (g2 && dist(g2) <= 15) s.geo = { ...g2, found: g2.found + ' (refeito perto das outras)' };
+            else if (!s.geo.bairroOk) { log(`- ${s.rua}, ${s.numero}: achada longe das outras (${s.geo.found}); ficou sem posição`); s.geo = null; }
+        }
     }
     // Início: { rua, numero, bairro } ou texto. Procura no IBGE e depois no mapa gratuito.
     let start = null;
