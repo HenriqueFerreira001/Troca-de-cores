@@ -138,7 +138,10 @@ async function main() {
     }
     // Início: { rua, numero, bairro } ou texto. Procura no IBGE e depois no mapa gratuito.
     let start = null;
-    if (cfg.inicio) {
+    if (cfg.inicio && cfg.inicio.lat != null) {
+        // Base com coordenadas fixas (igual às bases cadastradas no app).
+        start = { lat: cfg.inicio.lat, lng: cfg.inicio.lng, label: cfg.inicio.nome || 'Base' };
+    } else if (cfg.inicio) {
         const ini = typeof cfg.inicio === 'string' ? { ...Enderecos.parse(cfg.inicio), texto: cfg.inicio } : { street: cfg.inicio.rua, number: cfg.inicio.numero, bairro: cfg.inicio.bairro, texto: cfg.inicio.nome || cfg.inicio.rua };
         // O início pode ser em outra cidade (ex.: base em Embu, paradas em São Paulo).
         const cityIni = cfg.inicio.cidade ? ibgeCity(cfg.inicio.cidade) : city;
@@ -202,7 +205,9 @@ async function main() {
     if (livre && order.length > 1) {
         // Igual ao app: serviço longe da base → começa na ponta mais longe; perto → pela mais perto.
         const maisPerto = Math.min(...order.map(i => matrix[0][i]));
-        const longe = cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60;
+        // Regra da base (igual a ⚙ Configurações → Bases): perto | longe | auto.
+        const longe = cfg.regra === 'perto' ? false : cfg.regra === 'longe' ? true
+            : (cfg.otimizarPor === 'distancia' ? maisPerto > 15000 : maisPerto > 25 * 60);
         const a = order[0], z = order[order.length - 1];
         if (longe ? matrix[a][0] < matrix[z][0] : matrix[0][z] < matrix[0][a]) order = [...order].reverse();
     }
