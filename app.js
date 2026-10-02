@@ -129,7 +129,7 @@
         // Fábio: CEP 08771-001 (Parque Residencial Itapeti), posição das casas desse CEP no cadastro do IBGE.
         bases: [
             { nome: 'Mauro (Usina)', addr: 'Usina de Asfalto — Estrada Velha da Pedreira, Pq. São Leonardo, Embu das Artes', lat: -23.6457, lng: -46.8992 },
-            { nome: 'Fábio', addr: 'Fábio — Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes', lat: -23.4530, lng: -46.2680, ordem: 'perto' },
+            { nome: 'Fábio', addr: 'Fábio — Usinas 2A, Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes', lat: -23.4530, lng: -46.2680, ordem: 'perto' },
         ],
         // Envio direto para o sistema da empresa (docs/INTEGRACAO-SISTEMA.md). Vazio = desligado.
         sistemaUrl: '',
@@ -160,6 +160,12 @@
                 }
                 // A Usina (Estrada Velha da Pedreira) é a saída da equipe do Mauro.
                 s.settings.bases.forEach(b => { if (b.nome === 'Usina' && b.addr === defaultSettings.base.addr) b.nome = 'Mauro (Usina)'; });
+                // Base do Fábio passou a ter o nome da usina (Usinas 2A): atualiza o endereço salvo.
+                const fabioVelho = 'Fábio — Estr. do Itapeti das Furnas, Km 11 - Parque Residencial Itapeti, Mogi das Cruzes';
+                const fabioNovo = defaultSettings.bases[1].addr;
+                s.settings.bases.forEach(b => { if (b.addr === fabioVelho) b.addr = fabioNovo; });
+                if (s.settings.base && s.settings.base.addr === fabioVelho) s.settings.base.addr = fabioNovo;
+                Object.values(s.routes || {}).forEach(r => { if (r.start && r.start.addr === fabioVelho) r.start.addr = fabioNovo; });
                 // A equipe do Fábio começa pela parada mais perto da base dele.
                 if (!s.settings.migrouFabioOrdem) {
                     s.settings.migrouFabioOrdem = true;
